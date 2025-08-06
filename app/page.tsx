@@ -31,14 +31,19 @@ export default function TrashMapsHome() {
             <p className="text-gray-600">
               Welcome to Trash Maps! Can't find a trash can? Use our map to quickly locate nearby public bins. It's the easiest way to dispose of your trash responsibly and help keep our streets tidy.
             </p>
-            <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 rounded-lg mb-4">
+
+
+            {/*TODO: Uncomment this and add an Advertisment banner if adsense does not look elegant on page */}
+            {/*<div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 rounded-lg mb-4">
               <p className="text-xs opacity-75 mb-2">Advertisement</p>
               <h4 className="font-bold mb-1">Eco-Friendly Products</h4>
               <p className="text-sm mb-3">{"Discover sustainable solutions for a cleaner tomorrow"}</p>
               <Button variant="secondary" size="sm" className="bg-white text-blue-600 hover:bg-gray-100">
                 Learn More
               </Button>
-            </div>
+            </div>*/}
+
+
             <div className="space-y-2 text-sm text-gray-500">
               <p>🗺️ Global coverage in 150+ countries</p>
             </div>
