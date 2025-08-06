@@ -29,7 +29,7 @@ export default function TrashMapsHome() {
               Welcome to Trash Maps!
             </h3>
             <p className="text-gray-600">
-              Find usable trash bins anywhere in the world. Our community-driven platform helps keep our planet clean by making disposal points easy to locate.
+              Welcome to Trash Maps! Can't find a trash can? Use our map to quickly locate nearby public bins. It's the easiest way to dispose of your trash responsibly and help keep our streets tidy.
             </p>
             <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 rounded-lg mb-4">
               <p className="text-xs opacity-75 mb-2">Advertisement</p>
@@ -41,8 +41,6 @@ export default function TrashMapsHome() {
             </div>
             <div className="space-y-2 text-sm text-gray-500">
               <p>🗺️ Global coverage in 150+ countries</p>
-              <p>⭐ Community ratings and reviews</p>
-              <p>📍 Real-time location updates</p>
             </div>
             <Button 
               onClick={() => setShowWelcomeModal(false)}

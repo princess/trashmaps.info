@@ -23,6 +23,8 @@ html {
   --font-mono: ${GeistMono.variable};
 }
         `}</style>
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9410578522426844"
+     crossorigin="anonymous"></script>
       </head>
       <body>{children}</body>
     </html>
