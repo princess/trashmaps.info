@@ -33,11 +33,7 @@ export default function TrashMapsHome() {
               Welcome to Trash Maps! Can't find a trash can? Use our map to quickly locate nearby public bins. It's the easiest way to dispose of your trash responsibly and help keep our streets tidy.
             </p>
            
-
-
             <AdComponent />
-
-
 
             <div className="space-y-2 text-sm text-gray-500">
               <p>🗺️ Global coverage in 150+ countries</p>
