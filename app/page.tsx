@@ -180,7 +180,7 @@ export default function TrashMapsHome() {
             Making the world cleaner, one bin at a time.
           </p>
           <p className="text-gray-500 text-xs mt-2">
-            &copy; 2024 Trash Maps. All rights reserved.
+            &copy; 2025 Trash Maps. All rights reserved.
           </p>
         </div>
       </footer>
