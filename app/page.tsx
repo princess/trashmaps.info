@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Map } from "@/components/ui/map"
 
 export default function TrashMapsHome() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -97,71 +98,7 @@ export default function TrashMapsHome() {
             
             {/* Map Display */}
             <div className="h-full bg-gradient-to-br from-green-100 to-blue-100 relative overflow-hidden">
-              <div className="absolute inset-0 bg-[url('/world-map-location-pins.png')] bg-cover bg-center opacity-20"></div>
-              
-              {/* Sample Map Markers */}
-              <div className="absolute top-1/4 left-1/3 transform -translate-x-1/2 -translate-y-1/2">
-                <div className="bg-green-600 p-2 rounded-full shadow-lg cursor-pointer hover:bg-green-700 transition-colors animate-pulse">
-                  <MapPin className="h-4 w-4 text-white" />
-                </div>
-              </div>
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                <div className="bg-green-600 p-2 rounded-full shadow-lg cursor-pointer hover:bg-green-700 transition-colors">
-                  <MapPin className="h-4 w-4 text-white" />
-                </div>
-              </div>
-              <div className="absolute top-1/3 right-1/4 transform translate-x-1/2 -translate-y-1/2">
-                <div className="bg-green-600 p-2 rounded-full shadow-lg cursor-pointer hover:bg-green-700 transition-colors">
-                  <MapPin className="h-4 w-4 text-white" />
-                </div>
-              </div>
-              <div className="absolute bottom-1/3 left-1/4 transform -translate-x-1/2 translate-y-1/2">
-                <div className="bg-green-600 p-2 rounded-full shadow-lg cursor-pointer hover:bg-green-700 transition-colors">
-                  <MapPin className="h-4 w-4 text-white" />
-                </div>
-              </div>
-              <div className="absolute top-2/3 right-1/3 transform translate-x-1/2 -translate-y-1/2">
-                <div className="bg-green-600 p-2 rounded-full shadow-lg cursor-pointer hover:bg-green-700 transition-colors">
-                  <MapPin className="h-4 w-4 text-white" />
-                </div>
-              </div>
-              
-              {/* Map Info Card */}
-              <div className="absolute bottom-4 left-4 bg-white p-4 rounded-lg shadow-lg max-w-xs">
-                <div className="flex items-center gap-2 mb-2">
-                  <MapPin className="h-4 w-4 text-green-600" />
-                  <span className="font-semibold">Central Park Bin #247</span>
-                </div>
-                <p className="text-sm text-gray-600 mb-2">Public trash bin with recycling</p>
-                <div className="flex items-center gap-1 mb-2">
-                  <Star className="h-3 w-3 text-yellow-400 fill-current" />
-                  <Star className="h-3 w-3 text-yellow-400 fill-current" />
-                  <Star className="h-3 w-3 text-yellow-400 fill-current" />
-                  <Star className="h-3 w-3 text-yellow-400 fill-current" />
-                  <Star className="h-3 w-3 text-gray-300" />
-                  <span className="text-xs text-gray-500 ml-1">4.2 (23 reviews)</span>
-                </div>
-                <p className="text-xs text-gray-500">Last updated: 2 hours ago</p>
-              </div>
-
-              {/* Map Legend */}
-              <div className="absolute top-4 right-4 bg-white p-3 rounded-lg shadow-lg">
-                <h4 className="text-sm font-semibold mb-2">Legend</h4>
-                <div className="space-y-1 text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-green-600 rounded-full"></div>
-                    <span>Available</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                    <span>Nearly Full</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                    <span>Full</span>
-                  </div>
-                </div>
-              </div>
+              <Map />  
             </div>
           </div>
         </div>

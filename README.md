@@ -1,4 +1,4 @@
 # trashmaps.info
 Making the world cleaner, one bin at a time.
 
-using node v20.12.2
+using node v24.13.1
