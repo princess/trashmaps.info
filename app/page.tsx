@@ -1,20 +1,86 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { MapPin, Search, Filter, Star, X, Recycle } from 'lucide-react'
+import { useState, useCallback, useEffect } from "react"
+import { MapPin, Recycle } from 'lucide-react'
 import { AdComponent } from "@/components/ui/ad-component"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Map } from "@/components/ui/map"
-
+import { Map } from "@/components/ui/dynamic-map"
+import AddressSearch from "@/components/ui/address-search"
 export default function TrashMapsHome() {
-  const [searchQuery, setSearchQuery] = useState("")
   const [showWelcomeModal, setShowWelcomeModal] = useState(true)
+  const [mapCenter, setMapCenter] = useState<[number, number]>([51.505, -0.09]); // Default to London
+  const [mapZoom, setMapZoom] = useState(14); // Start at zoom level 14 or higher
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+
+  const handleSelectLocation = useCallback((lat: number, lon: number) => {
+    setMapCenter([lat, lon]);
+    setMapZoom(16);
+  }, []);
+
+  const handleGeolocation = useCallback(() => {
+    setIsLocating(true);
+    setLocationError(null);
+
+    const fetchGeoIpLocation = async () => {
+        try {
+            const response = await fetch('http://ip-api.com/json/');
+            const data = await response.json();
+            if (data.status === 'success' && data.lat && data.lon) {
+                setMapCenter([data.lat, data.lon]);
+                setMapZoom(14); // Zoom to city level for GeoIP
+            }
+        } catch (ipError) {
+            console.error("GeoIP lookup failed:", ipError);
+        } finally {
+            setIsLocating(false);
+        }
+    };
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const coords: [number, number] = [position.coords.latitude, position.coords.longitude];
+          setMapCenter(coords);
+          setUserLocation(coords);
+          setMapZoom(16); // Zoom to neighborhood level for precise location
+          setIsLocating(false);
+        },
+        (error) => {
+          let message = "Precise location denied. Using approximate location.";
+          switch(error.code) {
+            case error.PERMISSION_DENIED:
+              console.warn("User denied Geolocation.");
+              message = "Location permission denied. Finding your approximate location.";
+              break;
+            case error.POSITION_UNAVAILABLE:
+              console.warn("Geolocation position unavailable.");
+              message = "Location is currently unavailable. Finding your approximate location.";
+              break;
+            case error.TIMEOUT:
+              console.warn("Geolocation request timed out.");
+              message = "Location request timed out. Finding your approximate location.";
+              break;
+          }
+          setLocationError(message);
+          fetchGeoIpLocation(); // Fallback to GeoIP
+        }
+      );
+    } else {
+      setLocationError("Geolocation is not supported. Using approximate location.");
+      fetchGeoIpLocation(); // Fallback to GeoIP
+    }
+  }, []);
+
+  // Automatically get user's location on initial load
+  useEffect(() => {
+    handleGeolocation();
+  }, [handleGeolocation]);
 
   return (
-    <div className="h-screen bg-gradient-to-b from-green-50 to-white flex flex-col">
+    <div className="relative h-screen w-screen">
       {/* Welcome Modal */}
       <Dialog open={showWelcomeModal} onOpenChange={setShowWelcomeModal}>
         <DialogContent className="sm:max-w-md">
@@ -31,11 +97,9 @@ export default function TrashMapsHome() {
               Welcome to Trash Maps!
             </h3>
             <p className="text-gray-600">
-              Welcome to Trash Maps! Can't find a trash can? Use our map to quickly locate nearby public bins. It's the easiest way to dispose of your trash responsibly and help keep our streets tidy.
+             Use our map to quickly locate nearby public trash and recycling bins.
             </p>
-           
             <AdComponent />
-
             <div className="space-y-2 text-sm text-gray-500">
               <p>🗺️ Global coverage in 150+ countries</p>
             </div>
@@ -48,77 +112,56 @@ export default function TrashMapsHome() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Simple Header */}
-      <header className="border-b bg-white/90 backdrop-blur-sm sticky top-0 z-40">
-        <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="bg-green-600 p-1.5 rounded-lg">
-                <Recycle className="h-5 w-5 text-white" />
-              </div>
-              <h1 className="text-xl font-bold text-green-800">Trash Maps</h1>
+      
+      {/* Map Controls Panel (Top-Left) */}
+      <div className="absolute top-0 left-0 z-10 p-2">
+          <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-2 flex flex-col gap-2 max-w-sm">
+            <div className="flex flex-wrap gap-2 items-center">
+                  <AddressSearch onSelectLocation={handleSelectLocation} />
             </div>
-          </div>
         </div>
-      </header>
+      </div>
 
-      {/* Map Section - Main Content */}
-      <section className="flex-1 p-4">
-        <div className="container mx-auto">
-          <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-            {/* Map Controls */}
-            <div className="border-b p-4">
-              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                <div className="flex flex-wrap gap-2 items-center">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                    <Input
-                      placeholder="Search location..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 w-64"
-                    />
-                  </div>
-                  <Button variant="outline" size="sm">
-                    <Filter className="mr-2 h-4 w-4" />
-                    Filter
-                  </Button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary">Public Bins</Badge>
-                  <Badge variant="secondary">Recycling</Badge>
-                  <Badge variant="secondary">Compost</Badge>
-                </div>
-              </div>
-              <div className="text-sm text-gray-600 mt-2">
-                Showing 1,247 bins in your area
-              </div>
-            </div>
-            
-            {/* Map Display */}
-            <div className="h-full bg-gradient-to-br from-green-100 to-blue-100 relative overflow-hidden">
-              <Map />  
-            </div>
-          </div>
+      {/* Geolocation Button (Bottom-Right) */}
+      <div className="absolute bottom-10 right-10 z-20">
+        <Button 
+          variant="default" 
+          size="icon" 
+          className="rounded-full h-12 w-12 bg-green-600 hover:bg-green-700 shadow-lg" 
+          onClick={handleGeolocation} 
+          disabled={isLocating}
+        >
+          {isLocating ? (
+             <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+             </svg>
+          ) : (
+            <MapPin className="h-6 w-6 text-white" />
+          )}
+        </Button>
+      </div>
+
+      {locationError && (
+        <div className="absolute bottom-20 right-10 z-20 p-2 bg-red-100 text-red-800 rounded-md shadow-lg text-sm">
+          {locationError}
         </div>
-      </section>
+      )}
 
-      {/* Simple Footer */}
-      <footer className="bg-gray-900 text-white py-3 px-4">
+      {/* Full Screen Map */}
+      <div className="absolute top-0 left-0 h-full w-full z-0">
+        <Map center={mapCenter} userLocation={userLocation} zoom={mapZoom} />  
+      </div>
+
+      {/* Bottom Banner */}
+      <footer className="absolute bottom-0 left-0 right-0 z-10 bg-gray-900/90 backdrop-blur-sm text-white py-2 px-4">
         <div className="container mx-auto text-center">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <div className="bg-green-600 p-1.5 rounded-lg">
+          <div className="flex items-center justify-center gap-2">
+            <div className="bg-green-600 p-1 rounded-md">
               <Recycle className="h-4 w-4 text-white" />
             </div>
-            <span className="font-bold">Trash Maps</span>
+            <span className="font-bold text-sm">Trash Maps</span>
           </div>
-          <p className="text-gray-400 text-sm">
-            Making the world cleaner, one bin at a time.
-          </p>
-          <p className="text-gray-500 text-xs mt-2">
-            &copy; 2025 Trash Maps. All rights reserved.
-          </p>
         </div>
       </footer>
     </div>

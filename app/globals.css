@@ -121,3 +121,29 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes gps_pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 10px rgba(37, 99, 235, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+  }
+}
+
+.gps-marker .pulse {
+  border-radius: 50%;
+  height: 14px;
+  width: 14px;
+  background-color: #2563eb; /* blue-600 */
+  border: 2px solid white;
+  box-shadow: 0 0 0 0 rgba(37, 99, 235, 1);
+  transform: scale(1);
+  animation: gps_pulse 2s infinite;
+}
