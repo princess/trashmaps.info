@@ -109,7 +109,9 @@ const TrashBinFetcher = () => {
       [out:json][timeout:25];
       (
         node["amenity"~"waste_basket|recycling|waste_disposal"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
+        node["bin"="yes"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
         way["amenity"~"waste_basket|recycling|waste_disposal"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
+        way["bin"="yes"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
         relation["amenity"~"waste_basket|recycling|waste_disposal"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
       );
       out center;
@@ -292,6 +294,14 @@ const BinPopup = ({ bin }: { bin: TrashBin }) => {
                   return null;
               })}
               {bin.tags.description && <p className="text-[10px] italic mt-1 text-gray-400 leading-tight border-t border-gray-50 pt-1">{bin.tags.description}</p>}
+              <a 
+                href={`https://www.openstreetmap.org/edit?node=${bin.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[9px] text-green-600 hover:underline mt-2 block font-medium"
+              >
+                Missing something? Edit on OpenStreetMap
+              </a>
             </div>
         </div>
     );
