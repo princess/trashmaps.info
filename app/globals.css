@@ -147,3 +147,49 @@
   transform: scale(1);
   animation: gps_pulse 2s infinite;
 }
+
+/* Leaflet Popup Mobile Friendly Styles */
+.leaflet-popup-content-wrapper {
+  border-radius: 12px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.leaflet-popup-content {
+  margin: 12px 16px;
+  line-height: 1.4;
+  width: auto !important;
+  max-width: 200px;
+}
+
+@media (min-width: 640px) {
+  .leaflet-popup-content {
+    max-width: 300px;
+  }
+}
+
+.leaflet-popup-tip-container {
+  margin-top: -1px;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+  top: 8px;
+  right: 8px;
+  padding: 4px;
+  width: 24px;
+  height: 24px;
+  font: 16px/24px Tahoma, Verdana, sans-serif;
+  color: #666;
+}
+
+/* Larger zoom controls for touch */
+@media (max-width: 640px) {
+  .leaflet-bar a {
+    width: 36px;
+    height: 36px;
+    line-height: 36px;
+  }
+  .leaflet-top.leaflet-right {
+    margin-top: 70px;
+  }
+}

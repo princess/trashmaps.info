@@ -78,7 +78,7 @@ const AddressSearch = ({ onSelectLocation }: AddressSearchProps) => {
           placeholder="Search location..."
           value={query}
           onChange={handleChange}
-          className="pl-10 w-64"
+          className="pl-10 w-full sm:w-64"
           disabled={loading}
         />
       </div>

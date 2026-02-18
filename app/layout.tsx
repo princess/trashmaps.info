@@ -5,8 +5,39 @@ import './globals.css'
 
 
 export const metadata: Metadata = {
-  title: 'Trash Maps',
-  description: 'Making the world cleaner, one bin at a time'
+  title: 'Trash Maps | Find Public Trash & Recycling Bins Near You',
+  description: 'Interactive global map to locate nearby public trash cans, recycling bins, compost points, and waste disposal units. Covers 150+ countries.',
+  keywords: ['trash maps', 'find recycling bins', 'public trash cans near me', 'waste disposal locations', 'recycling points map', 'compost bins near me'],
+  authors: [{ name: 'Trash Maps Team' }],
+  openGraph: {
+    title: 'Trash Maps | Find Public Trash & Recycling Bins Near You',
+    description: 'The easiest way to find public waste and recycling bins anywhere in the world.',
+    url: 'https://trashmaps.info',
+    siteName: 'Trash Maps',
+    images: [
+      {
+        url: '/world-map-location-pins.png',
+        width: 1200,
+        height: 630,
+        alt: 'Trash Maps - Interactive Bin Locator',
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Trash Maps | Find Public Trash & Recycling Bins Near You',
+    description: 'Find nearby public trash and recycling bins in seconds.',
+    images: ['/world-map-location-pins.png'],
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+  alternates: {
+    canonical: 'https://trashmaps.info',
+  },
 }
 
 export default function RootLayout({

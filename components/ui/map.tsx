@@ -65,7 +65,8 @@ const TrashBinFetcher = () => {
   ];
 
   const getIconForBin = (bin: TrashBin) => {
-    const isRecycling = Object.keys(bin.tags).some(key => key.startsWith('recycling') && bin.tags[key] === 'yes');
+    const isRecycling = bin.tags.amenity === 'recycling' || 
+                       Object.keys(bin.tags).some(key => key.startsWith('recycling') && bin.tags[key] === 'yes');
     return isRecycling ? recyclingTrashIcon : generalTrashIcon;
   };
 
@@ -107,9 +108,9 @@ const TrashBinFetcher = () => {
     const overpassQuery = `
       [out:json][timeout:25];
       (
-        node["amenity"="waste_basket"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
-        way["amenity"="waste_basket"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
-        relation["amenity"="waste_basket"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
+        node["amenity"~"waste_basket|recycling|waste_disposal"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
+        way["amenity"~"waste_basket|recycling|waste_disposal"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
+        relation["amenity"~"waste_basket|recycling|waste_disposal"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
       );
       out center;
     `;
@@ -210,7 +211,7 @@ const TrashBinFetcher = () => {
     <>
       {trashBins.map((bin) => (
         <Marker key={bin.id} position={[bin.lat, bin.lon]} icon={getIconForBin(bin)}>
-          <Popup>
+          <Popup maxWidth={250} minWidth={150}>
             <BinPopup bin={bin} />
           </Popup>
         </Marker>
@@ -256,20 +257,41 @@ const BinPopup = ({ bin }: { bin: TrashBin }) => {
         fetchAddress();
     }, [bin.lat, bin.lon]);
 
+    const getTitle = () => {
+      switch(bin.tags.amenity) {
+        case 'recycling': return 'Recycling Point';
+        case 'waste_disposal': return 'Waste Disposal';
+        default: return 'Trash Bin';
+      }
+    };
+
     return (
-        <div>
-            <strong className="text-lg">Trash Bin</strong>
-            <div className="text-sm text-gray-600 mt-2">
+        <div className="flex flex-col gap-1 min-w-[140px]">
+            <strong className="text-base font-bold text-green-800">{getTitle()}</strong>
+            <div className="text-xs text-gray-600 leading-tight">
               {isLoading ? "Loading address..." : address}
             </div>
-            <div className="mt-2 pt-2 border-t">
+            
+            <div className="mt-1 pt-1 border-t border-gray-100">
               {Object.entries(bin.tags).map(([key, value]) => {
-                  if (key.startsWith('recycling:')) {
-                      return <p key={key} className="capitalize text-xs">{`${key.split(':')[1]}: ${value}`}</p>
+                  // Show specific recycling types (glass, paper, organic, etc.)
+                  if (key.startsWith('recycling:') && value === 'yes') {
+                      return (
+                        <div key={key} className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                          <p className="capitalize text-[10px] leading-tight text-gray-500">
+                            {key.split(':')[1].replace('_', ' ')}
+                          </p>
+                        </div>
+                      );
+                  }
+                  // Show if it's a specific type of waste disposal
+                  if (key === 'waste' && value !== 'yes') {
+                    return <p key={key} className="text-[10px] text-blue-600 font-medium capitalize">{value} waste</p>
                   }
                   return null;
               })}
-              {bin.tags.description && <p className="text-xs italic mt-1">{bin.tags.description}</p>}
+              {bin.tags.description && <p className="text-[10px] italic mt-1 text-gray-400 leading-tight border-t border-gray-50 pt-1">{bin.tags.description}</p>}
             </div>
         </div>
     );

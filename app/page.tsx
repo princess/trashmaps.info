@@ -80,8 +80,32 @@ export default function TrashMapsHome() {
   }, [handleGeolocation]);
 
   return (
-    <div className="relative h-screen w-screen">
-      {/* Welcome Modal */}
+    <div className="relative h-[100dvh] w-full overflow-hidden">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebApplication",
+            "name": "Trash Maps",
+            "url": "https://trashmaps.info",
+            "description": "Interactive map to find public trash and recycling bins near you.",
+            "applicationCategory": "Map",
+            "operatingSystem": "All",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            }
+          })
+        }}
+      />
+      
+      {/* Hidden H1 for SEO */}
+      <h1 className="sr-only">Trash Maps - Find Public Trash and Recycling Bins Near You</h1>
+
+      <main className="relative h-full w-full">
+        {/* Welcome Modal */}
       <Dialog open={showWelcomeModal} onOpenChange={setShowWelcomeModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -114,8 +138,8 @@ export default function TrashMapsHome() {
       </Dialog>
       
       {/* Map Controls Panel (Top-Left) */}
-      <div className="absolute top-0 left-0 z-10 p-2">
-          <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-2 flex flex-col gap-2 max-w-sm">
+      <div className="absolute top-0 left-0 z-10 p-2 w-full sm:w-auto max-w-[calc(100%-50px)] sm:max-w-none">
+          <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-2 flex flex-col gap-2 w-full sm:max-w-sm">
             <div className="flex flex-wrap gap-2 items-center">
                   <AddressSearch onSelectLocation={handleSelectLocation} />
             </div>
@@ -123,11 +147,11 @@ export default function TrashMapsHome() {
       </div>
 
       {/* Geolocation Button (Bottom-Right) */}
-      <div className="absolute bottom-10 right-10 z-20">
+      <div className="absolute bottom-20 right-4 sm:right-10 z-20">
         <Button 
           variant="default" 
           size="icon" 
-          className="rounded-full h-12 w-12 bg-green-600 hover:bg-green-700 shadow-lg" 
+          className="rounded-full h-14 w-14 bg-green-600 hover:bg-green-700 shadow-lg" 
           onClick={handleGeolocation} 
           disabled={isLocating}
         >
@@ -143,7 +167,7 @@ export default function TrashMapsHome() {
       </div>
 
       {locationError && (
-        <div className="absolute bottom-20 right-10 z-20 p-2 bg-red-100 text-red-800 rounded-md shadow-lg text-sm">
+        <div className="absolute bottom-36 right-4 sm:right-10 z-20 p-2 bg-red-100 text-red-800 rounded-md shadow-lg text-sm max-w-[250px]">
           {locationError}
         </div>
       )}
@@ -152,6 +176,7 @@ export default function TrashMapsHome() {
       <div className="absolute top-0 left-0 h-full w-full z-0">
         <Map center={mapCenter} userLocation={userLocation} zoom={mapZoom} />  
       </div>
+      </main>
 
       {/* Bottom Banner */}
       <footer className="absolute bottom-0 left-0 right-0 z-10 bg-gray-900/90 backdrop-blur-sm text-white py-2 px-4">
