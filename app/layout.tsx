@@ -5,6 +5,7 @@ import './globals.css'
 
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://trashmaps.info'),
   title: 'Trash Maps | Find Public Trash & Recycling Bins Near You',
   description: 'Interactive global map to locate nearby public trash cans, recycling bins, compost points, and waste disposal units. Covers 150+ countries.',
   keywords: ['trash maps', 'find recycling bins', 'public trash cans near me', 'waste disposal locations', 'recycling points map', 'compost bins near me'],
