@@ -141,7 +141,7 @@ export default function TrashMapsHome() {
       <div className="absolute top-0 left-0 z-10 p-2 w-full sm:w-auto max-w-[calc(100%-50px)] sm:max-w-none">
           <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-2 flex flex-col gap-2 w-full sm:max-w-sm">
             <div className="flex flex-wrap gap-2 items-center">
-                  <AddressSearch onSelectLocation={handleSelectLocation} />
+                  <AddressSearch onSelectLocation={handleSelectLocation} currentCenter={mapCenter} />
             </div>
         </div>
       </div>
