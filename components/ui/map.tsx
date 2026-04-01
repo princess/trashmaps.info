@@ -76,7 +76,7 @@ const TrashBinFetcher = () => {
 
   const map = useMap();
 
-  const MIN_ZOOM_FOR_FETCH = 10;
+  const MIN_ZOOM_FOR_FETCH = 13;
   const REQUEST_TIMEOUT = 60000; 
   const MAX_CONCURRENT_REQUESTS = 3;
   const mirrorsInProgress = useRef<Set<string>>(new Set());
@@ -84,8 +84,7 @@ const TrashBinFetcher = () => {
   const getGridSize = useCallback((zoom: number) => {
     if (zoom >= 16) return 0.02; // ~2km
     if (zoom >= 14) return 0.08; // ~8km
-    if (zoom >= 12) return 0.24; // ~24km
-    return 0.6; // ~60km for zoom 10-11
+    return 0.24; // ~24km for zoom 13
   }, []);
 
   const getGridCells = useCallback((bounds: LatLngBounds) => {
@@ -514,11 +513,13 @@ const TrashMap = ({ center, userLocation, zoom }: MapProps) => {
         dragging={true} // Ensure dragging is enabled
         preferCanvas={true} // Use canvas rendering for better performance
         maxZoom={20}
+        minZoom={3}
         >
       <TileLayer
         url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CartoDB</a>'
         maxZoom={20}
+        minZoom={3}
       />
       <MapUpdater center={center} zoom={zoom} />
       <TrashBinFetcher />
