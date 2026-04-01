@@ -64,8 +64,8 @@ const TrashBinFetcher = () => {
 
   const MIN_ZOOM_FOR_FETCH = 10;
   const REQUEST_TIMEOUT = 60000; // 60 seconds
-  const GRID_SIZE_LOW_ZOOM = 0.04; // Small enough to be fast, large enough to cover ground
-  const GRID_SIZE_HIGH_ZOOM = 0.01; // Small grid for high detail areas
+  const GRID_SIZE_LOW_ZOOM = 0.06; // Small enough to be fast, large enough to cover ground
+  const GRID_SIZE_HIGH_ZOOM = 0.02; // Small grid for high detail areas
   const MAX_CONCURRENT_REQUESTS = 3;
   const API_ENDPOINTS = [
     'https://overpass-api.de/api/interpreter',
@@ -80,10 +80,14 @@ const TrashBinFetcher = () => {
     const zoom = map.getZoom();
     const dynamicGridSize = zoom < 14 ? GRID_SIZE_LOW_ZOOM : GRID_SIZE_HIGH_ZOOM;
     
-    const minLat = Math.floor(bounds.getSouth() / dynamicGridSize);
-    const maxLat = Math.floor(bounds.getNorth() / dynamicGridSize);
-    const minLon = Math.floor(bounds.getWest() / dynamicGridSize);
-    const maxLon = Math.floor(bounds.getEast() / dynamicGridSize);
+    // Prefetching: Add a buffer (50% of the view's size) around the current viewport
+    const latBuffer = (bounds.getNorth() - bounds.getSouth()) * 0.5;
+    const lonBuffer = (bounds.getEast() - bounds.getWest()) * 0.5;
+    
+    const minLat = Math.floor((bounds.getSouth() - latBuffer) / dynamicGridSize);
+    const maxLat = Math.floor((bounds.getNorth() + latBuffer) / dynamicGridSize);
+    const minLon = Math.floor((bounds.getWest() - lonBuffer) / dynamicGridSize);
+    const maxLon = Math.floor((bounds.getEast() + lonBuffer) / dynamicGridSize);
     
     const cells: string[] = [];
     for (let lat = minLat; lat <= maxLat; lat++) {
@@ -111,16 +115,21 @@ const TrashBinFetcher = () => {
       return;
     }
 
-    const cellToFetch = cellQueue.current.shift();
-    if (!cellToFetch) return;
+    const maxBatchSize = 6; // Combine up to 6 adjacent grid cells into one request
+    const cellsToFetch = cellQueue.current.splice(0, maxBatchSize);
+    if (cellsToFetch.length === 0) return;
 
     const zoom = map.getZoom();
-    activeGridCells.current.add(cellToFetch);
+    cellsToFetch.forEach(c => activeGridCells.current.add(c));
     setLoadingCount(prev => prev + 1);
     activeRequests.current++;
 
-    const cellBounds = getCellBounds(cellToFetch);
-    const { s, w, n, e } = cellBounds;
+    // Calculate combined bounding box for the entire batch
+    const allBounds = cellsToFetch.map(getCellBounds);
+    const s = Math.min(...allBounds.map(b => b.s));
+    const w = Math.min(...allBounds.map(b => b.w));
+    const n = Math.max(...allBounds.map(b => b.n));
+    const e = Math.max(...allBounds.map(b => b.e));
 
     const isLowZoom = zoom < 14;
     const overpassQuery = isLowZoom ? `
@@ -176,8 +185,10 @@ const TrashBinFetcher = () => {
               return Array.from(binMap.values());
             });
 
-            fetchedGridCells.current.add(cellToFetch);
-            activeGridCells.current.delete(cellToFetch);
+            cellsToFetch.forEach(c => {
+              fetchedGridCells.current.add(c);
+              activeGridCells.current.delete(c);
+            });
             success = true;
             break; 
           }
@@ -197,8 +208,8 @@ const TrashBinFetcher = () => {
       setMapMessage(null);
 
     } catch (err: any) {
-      console.error("Fetch cell error:", err, "Cell:", cellToFetch);
-      activeGridCells.current.delete(cellToFetch);
+      console.error("Fetch batch error:", err, "Cells:", cellsToFetch);
+      cellsToFetch.forEach(c => activeGridCells.current.delete(c));
       if (trashBins.length === 0) {
         setMapMessage(`Connection issues. Try zooming in or moving the map.`);
       }
