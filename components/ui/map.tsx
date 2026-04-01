@@ -224,37 +224,53 @@ const TrashBinFetcher = () => {
     const total = markers.length;
 
     markers.forEach((m: any) => {
-      // Access custom property we added to marker
       if (m.options.isRecycling) recyclingCount++;
     });
 
     const recyclingPercent = (recyclingCount / total) * 100;
     
-    // Green (#22c55e) for recycling, Gray (#6b7280) for general
-    const background = `conic-gradient(#22c55e 0% ${recyclingPercent}%, #6b7280 ${recyclingPercent}% 100%)`;
+    // Fill the bin from the bottom: Green for recycling, Gray for general
+    const fillGradient = `linear-gradient(to top, #22c55e 0% ${recyclingPercent}%, #6b7280 ${recyclingPercent}% 100%)`;
     
     return divIcon({
       html: `
-        <div style="
-          background: ${background};
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border: 2px solid white;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-          color: white;
-          font-weight: bold;
-          font-size: 12px;
-          text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-        ">
-          ${total}
+        <div style="position: relative; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style="width: 38px; height: 38px; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.4));">
+            <defs>
+              <linearGradient id="binFill-${cluster._leaflet_id}" x1="0" x2="0" y1="1" y2="0">
+                <stop offset="${recyclingPercent}%" stop-color="#22c55e" />
+                <stop offset="${recyclingPercent}%" stop-color="#6b7280" />
+              </linearGradient>
+            </defs>
+            <path 
+              d="M9 3v1H4v2h1v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6h1V4h-5V3H9M6 6h12v13H6V6m3 2v9h2V8H9m4 0v9h2V8h-2Z" 
+              fill="url(#binFill-${cluster._leaflet_id})"
+              stroke="white"
+              stroke-width="0.5"
+            />
+          </svg>
+          <div style="
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            background: #1e293b;
+            color: white;
+            border-radius: 10px;
+            padding: 1px 6px;
+            font-size: 10px;
+            font-weight: bold;
+            border: 1.5px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            min-width: 18px;
+            text-align: center;
+          ">
+            ${total}
+          </div>
         </div>
       `,
       className: 'custom-cluster-icon',
-      iconSize: [36, 36]
+      iconSize: [42, 42],
+      iconAnchor: [21, 21]
     });
   };
 
