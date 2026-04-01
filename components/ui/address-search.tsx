@@ -141,6 +141,24 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
     setError(null);
   };
 
+  const parseDisplayName = (displayName: string) => {
+    const parts = displayName.split(',').map(p => p.trim());
+    
+    // If the first part is just a number (like a house number), 
+    // we want to combine it with the second part (the street).
+    if (parts.length > 1 && /^\d+$/.test(parts[0])) {
+        return {
+            title: `${parts[0]} ${parts[1]}`,
+            subtitle: parts.slice(2).join(', ')
+        };
+    }
+    
+    return {
+        title: parts[0],
+        subtitle: parts.slice(1).join(', ')
+    };
+  };
+
   return (
     <div className="relative w-full sm:w-72" ref={containerRef}>
       <div className="relative group">
@@ -181,32 +199,37 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
             </div>
           ) : (
             <ul className="max-h-[320px] overflow-y-auto custom-scrollbar">
-              {results.map((result, index) => (
-                <li
-                  key={`${result.lat}-${result.lon}-${index}`}
-                  className={cn(
-                    "px-4 py-3 cursor-pointer transition-colors flex items-start gap-3 border-l-4",
-                    selectedIndex === index 
-                        ? "bg-green-50 border-green-500 text-green-900" 
-                        : "hover:bg-gray-50 border-transparent text-gray-700"
-                  )}
-                  onClick={() => handleSelectResult(result)}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                >
-                  <MapPin className={cn(
-                      "h-4 w-4 mt-0.5 shrink-0",
-                      selectedIndex === index ? "text-green-600" : "text-gray-400"
-                  )} />
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium line-clamp-2 leading-snug">
-                        {result.display_name.split(',')[0]}
-                    </span>
-                    <span className="text-[11px] text-gray-500 line-clamp-1 italic">
-                        {result.display_name.split(',').slice(1).join(',').trim()}
-                    </span>
-                  </div>
-                </li>
-              ))}
+              {results.map((result, index) => {
+                const { title, subtitle } = parseDisplayName(result.display_name);
+                return (
+                  <li
+                    key={`${result.lat}-${result.lon}-${index}`}
+                    className={cn(
+                      "px-4 py-3 cursor-pointer transition-colors flex items-start gap-3 border-l-4",
+                      selectedIndex === index 
+                          ? "bg-green-50 border-green-500 text-green-900" 
+                          : "hover:bg-gray-50 border-transparent text-gray-700"
+                    )}
+                    onClick={() => handleSelectResult(result)}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                  >
+                    <MapPin className={cn(
+                        "h-4 w-4 mt-0.5 shrink-0",
+                        selectedIndex === index ? "text-green-600" : "text-gray-400"
+                    )} />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium line-clamp-2 leading-snug">
+                          {title}
+                      </span>
+                      {subtitle && (
+                        <span className="text-[11px] text-gray-500 line-clamp-1 italic">
+                            {subtitle}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
