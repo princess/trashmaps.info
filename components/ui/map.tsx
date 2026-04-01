@@ -37,7 +37,7 @@ interface TrashBin {
 }
 
 // Component to update the map view when center props change
-const MapUpdater = ({ center, zoom }: MapProps) => {
+const MapUpdater = ({ center, zoom }: Pick<MapProps, 'center' | 'zoom'>) => {
   const map = useMap();
   useEffect(() => {
     map.setView(center, zoom);
@@ -48,21 +48,140 @@ const MapUpdater = ({ center, zoom }: MapProps) => {
 // This new component contains the logic for fetching and displaying trash bins
 const TrashBinFetcher = () => {
   const [trashBins, setTrashBins] = useState<TrashBin[]>([]);
-  const [loadingBins, setLoadingBins] = useState(false);
+  const [loadingCount, setLoadingCount] = useState(0);
   const [mapMessage, setMapMessage] = useState<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
   
-  // Cache state: List of bounds we have already successfully fetched
-  const fetchedAreas = useRef<LatLngBounds[]>([]);
+  // Grid-based cache state
+  const fetchedGridCells = useRef<Set<string>>(new Set());
+  const pendingGridCells = useRef<Set<string>>(new Set());
+  const activeRequests = useRef<number>(0);
 
   const map = useMap();
 
   const MIN_ZOOM_FOR_FETCH = 14;
-  const REQUEST_TIMEOUT = 20000; // 20 seconds
+  const REQUEST_TIMEOUT = 25000; // 25 seconds
+  const GRID_SIZE = 0.02; // Degrees
+  const MAX_CONCURRENT_REQUESTS = 3;
   const API_ENDPOINTS = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
   ];
+
+  const getGridCells = (bounds: LatLngBounds) => {
+    const minLat = Math.floor(bounds.getSouth() / GRID_SIZE);
+    const maxLat = Math.floor(bounds.getNorth() / GRID_SIZE);
+    const minLon = Math.floor(bounds.getWest() / GRID_SIZE);
+    const maxLon = Math.floor(bounds.getEast() / GRID_SIZE);
+    
+    const cells: string[] = [];
+    for (let lat = minLat; lat <= maxLat; lat++) {
+      for (let lon = minLon; lon <= maxLon; lon++) {
+        cells.push(`${lat}:${lon}`);
+      }
+    }
+    return cells;
+  };
+
+  const getCellBounds = (cellKey: string) => {
+    const [latIdx, lonIdx] = cellKey.split(':').map(Number);
+    return {
+      s: latIdx * GRID_SIZE,
+      w: lonIdx * GRID_SIZE,
+      n: (latIdx + 1) * GRID_SIZE,
+      e: (lonIdx + 1) * GRID_SIZE,
+    };
+  };
+
+  const fetchBatch = async (cellsToFetch: string[]) => {
+    if (cellsToFetch.length === 0) return;
+    
+    cellsToFetch.forEach(c => pendingGridCells.current.add(c));
+    setLoadingCount(prev => prev + 1);
+    activeRequests.current++;
+
+    // Calculate bounding box for the entire batch
+    const allBounds = cellsToFetch.map(getCellBounds);
+    const s = Math.min(...allBounds.map(b => b.s));
+    const w = Math.min(...allBounds.map(b => b.w));
+    const n = Math.max(...allBounds.map(b => b.n));
+    const e = Math.max(...allBounds.map(b => b.e));
+
+    const overpassQuery = `
+      [out:json][timeout:30];
+      (
+        node["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
+        node["bin"="yes"](${s},${w},${n},${e});
+        way["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
+        way["bin"="yes"](${s},${w},${n},${e});
+        relation["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
+      );
+      out center;
+    `;
+
+    let success = false;
+    let lastError: any = null;
+
+    try {
+      for (const endpoint of API_ENDPOINTS) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+          
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `data=${encodeURIComponent(overpassQuery)}`,
+            signal: controller.signal,
+          });
+          
+          clearTimeout(timeoutId);
+
+          if (response.ok) {
+            const data = await response.json();
+            const newBins = data.elements.map((element: any) => ({
+              id: element.id,
+              lat: element.type === 'node' ? element.lat : element.center.lat,
+              lon: element.type === 'node' ? element.lon : element.center.lon,
+              tags: element.tags || {},
+            }));
+            
+            setTrashBins(prevBins => {
+              const binMap = new Map(prevBins.map(b => [b.id, b]));
+              newBins.forEach((b: TrashBin) => binMap.set(b.id, b));
+              return Array.from(binMap.values());
+            });
+
+            cellsToFetch.forEach(c => {
+              fetchedGridCells.current.add(c);
+              pendingGridCells.current.delete(c);
+            });
+            success = true;
+            break; 
+          }
+          
+          if (response.status === 429 || response.status === 504) {
+            lastError = new Error(`API Busy (${response.status})`);
+            continue; 
+          }
+          throw new Error(`API Error ${response.status}`);
+        } catch (err: any) {
+          lastError = err;
+          if (err.name === 'AbortError') lastError = new Error('Request Timeout');
+        }
+      }
+
+      if (!success) throw lastError;
+      setMapMessage(null);
+
+    } catch (err: any) {
+      console.error("Fetch batch error:", err);
+      cellsToFetch.forEach(c => pendingGridCells.current.delete(c));
+      setMapMessage(`Warning: Some areas failed to load. Try zooming in/out.`);
+    } finally {
+      setLoadingCount(prev => Math.max(0, prev - 1));
+      activeRequests.current--;
+    }
+  };
 
   const getIconForBin = (bin: TrashBin) => {
     const isRecycling = bin.tags.amenity === 'recycling' || 
@@ -71,134 +190,37 @@ const TrashBinFetcher = () => {
   };
 
   const handleMapChange = useCallback(async () => {
-    // Cancel previous request if it's still running
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
     const zoom = map.getZoom();
     if (zoom < MIN_ZOOM_FOR_FETCH) {
-      // Don't clear bins, just stop fetching and warn
       setMapMessage("Please zoom in to find trash bins.");
-      setLoadingBins(false);
       return;
     }
 
     const currentBounds = map.getBounds();
-
-    // SPATIAL CACHE CHECK:
-    // If the current view is fully contained within an area we've already fetched,
-    // we don't need to do anything. We already have the data.
-    const isCached = fetchedAreas.current.some(area => area.contains(currentBounds));
-
-    if (isCached) {
-      setLoadingBins(false);
-      setMapMessage(null);
-      return; 
-    }
-
-    // Start fetching
-    setLoadingBins(true);
-    setMapMessage("Updating bins...");
+    const visibleCells = getGridCells(currentBounds);
     
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    const signal = controller.signal;
+    const newCells = visibleCells.filter(c => 
+      !fetchedGridCells.current.has(c) && !pendingGridCells.current.has(c)
+    );
 
-    const overpassQuery = `
-      [out:json][timeout:25];
-      (
-        node["amenity"~"waste_basket|recycling|waste_disposal"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
-        node["bin"="yes"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
-        way["amenity"~"waste_basket|recycling|waste_disposal"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
-        way["bin"="yes"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
-        relation["amenity"~"waste_basket|recycling|waste_disposal"](${currentBounds.getSouth()},${currentBounds.getWest()},${currentBounds.getNorth()},${currentBounds.getEast()});
-      );
-      out center;
-    `;
-
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
-
-    let lastError: any = null;
-    let response: Response | null = null;
-
-    for (const endpoint of API_ENDPOINTS) {
-      if (signal.aborted) break;
-      try {
-        response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `data=${encodeURIComponent(overpassQuery)}`,
-          signal: signal,
-        });
-
-        if (response.ok) {
-          lastError = null;
-          break; // Success
-        }
-
-        if (response.status === 429 || response.status === 504) {
-          console.warn(`Endpoint ${endpoint} failed with status ${response.status}. Trying next...`);
-          lastError = new Error(`API servers are busy (status: ${response.status})`);
-          continue; // Try next endpoint
-        }
-
-        lastError = new Error(`Overpass API error! status: ${response.status}`);
-        break; // Don't retry on other errors like 400
-        
-      } catch (err: any) {
-        lastError = err;
-        if (err.name === 'AbortError') break; 
-      }
+    if (newCells.length === 0) {
+      if (activeRequests.current === 0) setMapMessage(null);
+      return;
     }
 
-    clearTimeout(timeoutId);
-
-    try {
-      if (!response || !response.ok) throw lastError;
-
-      const data = await response.json();
-      const newBins = data.elements.map((element: any) => ({
-        id: element.id,
-        lat: element.type === 'node' ? element.lat : element.center.lat,
-        lon: element.type === 'node' ? element.lon : element.center.lon,
-        tags: element.tags,
-      }));
-      
-      // MERGE RESULTS:
-      // Add new bins to our existing list, removing duplicates by ID.
-      setTrashBins(prevBins => {
-        const binMap = new Map(prevBins.map(b => [b.id, b]));
-        newBins.forEach((b: TrashBin) => binMap.set(b.id, b));
-        return Array.from(binMap.values());
-      });
-
-      // Update Cache: Remember this area was successfully fetched
-      fetchedAreas.current.push(currentBounds);
-
-      setMapMessage(null);
-      if (newBins.length === 0 && trashBins.length === 0) {
-         // Only show "No bins" if we truly have 0 bins total, 
-         // otherwise it's confusing if we have bins from a previous pan.
-         // Actually, better to only show it if the *current fetch* returned nothing 
-         // AND we aren't showing any bins in the *current view*.
-         // For simplicity, let's just clear the message if we have bins.
-      }
-      
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        setMapMessage(`Error: ${err.message}. Please try again.`);
-      }
-    } finally {
-      setLoadingBins(false);
-      if (abortControllerRef.current === controller) {
-        abortControllerRef.current = null;
-      }
+    // Process new cells in batches to avoid firing too many parallel requests at once
+    // but still allow some concurrency.
+    const batchSize = 4; // Fetch up to 4 grid cells per request
+    for (let i = 0; i < newCells.length; i += batchSize) {
+      if (activeRequests.current >= MAX_CONCURRENT_REQUESTS) break;
+      const batch = newCells.slice(i, i + batchSize);
+      fetchBatch(batch);
     }
   }, [map]);
 
   useMapEvents({
     moveend: handleMapChange,
+    zoomend: handleMapChange,
   });
 
   useEffect(() => {
@@ -207,7 +229,7 @@ const TrashBinFetcher = () => {
     }
   }, [map, handleMapChange]);
 
-  const message = loadingBins ? "Updating bins..." : mapMessage;
+  const isLoading = loadingCount > 0;
 
   return (
     <>
@@ -218,7 +240,7 @@ const TrashBinFetcher = () => {
           </Popup>
         </Marker>
       ))}
-      {loadingBins && (
+      {isLoading && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] p-4 bg-white/80 backdrop-blur-sm rounded-full shadow-lg flex items-center justify-center">
              <svg className="animate-spin h-8 w-8 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -226,7 +248,7 @@ const TrashBinFetcher = () => {
              </svg>
         </div>
       )}
-      {!loadingBins && mapMessage && (
+      {!isLoading && mapMessage && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 w-fit p-2 bg-white/80 backdrop-blur-sm text-gray-800 text-center z-[1000] rounded-md shadow-lg">
           {mapMessage}
         </div>
@@ -235,19 +257,27 @@ const TrashBinFetcher = () => {
   );
 }
 
+// Simple module-level cache for addresses
+const addressCache = new Map<string, string>();
+
 // New component to handle the content and logic for a single bin's popup
 const BinPopup = ({ bin }: { bin: TrashBin }) => {
-    const [address, setAddress] = useState<string | null>(null);
+    const cacheKey = `${bin.lat}:${bin.lon}`;
+    const [address, setAddress] = useState<string | null>(addressCache.get(cacheKey) || null);
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
+        if (address) return; // Already cached
+
         const fetchAddress = async () => {
             setIsLoading(true);
             try {
                 const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${bin.lat}&lon=${bin.lon}&format=json`);
                 if (!response.ok) throw new Error("Failed to fetch address");
                 const data = await response.json();
-                setAddress(data.display_name || "Address not found");
+                const displayName = data.display_name || "Address not found";
+                setAddress(displayName);
+                addressCache.set(cacheKey, displayName);
             } catch (error) {
                 console.error("Reverse geocoding error:", error);
                 setAddress("Could not load address.");
@@ -257,7 +287,7 @@ const BinPopup = ({ bin }: { bin: TrashBin }) => {
         };
 
         fetchAddress();
-    }, [bin.lat, bin.lon]);
+    }, [bin.lat, bin.lon, cacheKey, address]);
 
     const getTitle = () => {
       switch(bin.tags.amenity) {
@@ -324,6 +354,7 @@ const TrashMap = ({ center, userLocation, zoom }: MapProps) => {
         scrollWheelZoom={true} // Re-enable scroll wheel zoom
         doubleClickZoom={true} // Re-enable double click zoom
         dragging={true} // Ensure dragging is enabled
+        preferCanvas={true} // Use canvas rendering for better performance
         >
       <TileLayer
         url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
