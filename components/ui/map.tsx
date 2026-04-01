@@ -62,18 +62,22 @@ const TrashBinFetcher = () => {
   const map = useMap();
 
   const MIN_ZOOM_FOR_FETCH = 10;
-  const REQUEST_TIMEOUT = 30000; // Increased to 30s for larger areas
-  const GRID_SIZE = 0.05; // Increased grid size for lower zoom
+  const REQUEST_TIMEOUT = 60000; // 60 seconds
+  const GRID_SIZE_LOW_ZOOM = 0.04; // Small enough to be fast, large enough to cover ground
+  const GRID_SIZE_HIGH_ZOOM = 0.01; // Small grid for high detail areas
   const MAX_CONCURRENT_REQUESTS = 3;
   const API_ENDPOINTS = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
+    'https://lz4.overpass-api.de/api/interpreter',
+    'https://z.overpass-api.de/api/interpreter',
+    'https://overpass.osm.ch/api/interpreter',
+    'https://overpass.be/api/interpreter',
   ];
 
   const getGridCells = (bounds: LatLngBounds) => {
     const zoom = map.getZoom();
-    // Dynamic grid size based on zoom level to prevent too many small cells
-    const dynamicGridSize = zoom < 14 ? GRID_SIZE * 2 : GRID_SIZE;
+    const dynamicGridSize = zoom < 14 ? GRID_SIZE_LOW_ZOOM : GRID_SIZE_HIGH_ZOOM;
     
     const minLat = Math.floor(bounds.getSouth() / dynamicGridSize);
     const maxLat = Math.floor(bounds.getNorth() / dynamicGridSize);
@@ -91,7 +95,7 @@ const TrashBinFetcher = () => {
 
   const getCellBounds = (cellKey: string) => {
     const zoom = map.getZoom();
-    const dynamicGridSize = zoom < 14 ? GRID_SIZE * 2 : GRID_SIZE;
+    const dynamicGridSize = zoom < 14 ? GRID_SIZE_LOW_ZOOM : GRID_SIZE_HIGH_ZOOM;
     const [latIdx, lonIdx] = cellKey.split(':').map(Number);
     return {
       s: latIdx * dynamicGridSize,
@@ -116,18 +120,17 @@ const TrashBinFetcher = () => {
     const n = Math.max(...allBounds.map(b => b.n));
     const e = Math.max(...allBounds.map(b => b.e));
 
-    // Optimize query based on zoom level
-    // For low zoom, we fetch only nodes and limit to 1000 per request to stay fast
+    // Optimize query: use [timeout:60], [maxsize:...], and out qt center
     const isLowZoom = zoom < 14;
     const overpassQuery = isLowZoom ? `
-      [out:json][timeout:30];
+      [out:json][timeout:60][maxsize:1000000];
       (
         node["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
         node["bin"="yes"](${s},${w},${n},${e});
       );
-      out center 1000;
+      out qt center 1500;
     ` : `
-      [out:json][timeout:30];
+      [out:json][timeout:60][maxsize:2000000];
       (
         node["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
         node["bin"="yes"](${s},${w},${n},${e});
@@ -135,14 +138,17 @@ const TrashBinFetcher = () => {
         way["bin"="yes"](${s},${w},${n},${e});
         relation["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
       );
-      out center;
+      out qt center;
     `;
 
     let success = false;
     let lastError: any = null;
 
+    // Randomize endpoints to distribute load
+    const shuffledEndpoints = [...API_ENDPOINTS].sort(() => Math.random() - 0.5);
+
     try {
-      for (const endpoint of API_ENDPOINTS) {
+      for (const endpoint of shuffledEndpoints) {
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
@@ -180,13 +186,13 @@ const TrashBinFetcher = () => {
           }
           
           if (response.status === 429 || response.status === 504) {
-            lastError = new Error(`API Busy (${response.status})`);
+            lastError = new Error(`API Busy/Timeout (${response.status})`);
             continue; 
           }
           throw new Error(`API Error ${response.status}`);
         } catch (err: any) {
           lastError = err;
-          if (err.name === 'AbortError') lastError = new Error('Request Timeout');
+          if (err.name === 'AbortError') lastError = new Error('Client Timeout');
         }
       }
 
@@ -196,7 +202,10 @@ const TrashBinFetcher = () => {
     } catch (err: any) {
       console.error("Fetch batch error:", err);
       cellsToFetch.forEach(c => pendingGridCells.current.delete(c));
-      setMapMessage(`Warning: Some areas failed to load. Try zooming in/out.`);
+      // Only show error message if we have no bins at all to show
+      if (trashBins.length === 0) {
+        setMapMessage(`Connection issues. Try zooming in or moving the map.`);
+      }
     } finally {
       setLoadingCount(prev => Math.max(0, prev - 1));
       activeRequests.current--;
@@ -228,9 +237,8 @@ const TrashBinFetcher = () => {
       return;
     }
 
-    // Process new cells in batches to avoid firing too many parallel requests at once
-    // but still allow some concurrency.
-    const batchSize = 4; // Fetch up to 4 grid cells per request
+    // Process new cells one by one (batchSize = 1) to ensure each request is small and fast
+    const batchSize = 1; 
     for (let i = 0; i < newCells.length; i += batchSize) {
       if (activeRequests.current >= MAX_CONCURRENT_REQUESTS) break;
       const batch = newCells.slice(i, i + batchSize);
