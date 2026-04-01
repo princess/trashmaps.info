@@ -48,6 +48,19 @@ const MapUpdater = ({ center, zoom }: Pick<MapProps, 'center' | 'zoom'>) => {
   return null;
 };
 
+const API_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://lz4.overpass-api.de/api/interpreter',
+  'https://z.overpass-api.de/api/interpreter',
+  'https://overpass.osm.ch/api/interpreter',
+  'https://overpass.be/api/interpreter',
+];
+
+// Tracks last use and failure counts for each mirror to implement rate limiting and circuit breaking
+const endpointStatus = new Map<string, { lastUsed: number; failureCount: number }>();
+API_ENDPOINTS.forEach(url => endpointStatus.set(url, { lastUsed: 0, failureCount: 0 }));
+
 // This new component contains the logic for fetching and displaying trash bins
 const TrashBinFetcher = () => {
   const [trashBins, setTrashBins] = useState<TrashBin[]>([]);
@@ -63,31 +76,16 @@ const TrashBinFetcher = () => {
   const map = useMap();
 
   const MIN_ZOOM_FOR_FETCH = 10;
-  const REQUEST_TIMEOUT = 60000; // 60 seconds
-  const GRID_SIZE_LOW_ZOOM = 0.06; // Small enough to be fast, large enough to cover ground
-  const GRID_SIZE_HIGH_ZOOM = 0.02; // Small grid for high detail areas
+  const REQUEST_TIMEOUT = 60000; 
+  const GRID_SIZE = 0.02; // Small, reliable grid size
   const MAX_CONCURRENT_REQUESTS = 3;
-  const API_ENDPOINTS = [
-    'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter',
-    'https://lz4.overpass-api.de/api/interpreter',
-    'https://z.overpass-api.de/api/interpreter',
-    'https://overpass.osm.ch/api/interpreter',
-    'https://overpass.be/api/interpreter',
-  ];
+  const mirrorsInProgress = useRef<Set<string>>(new Set());
 
   const getGridCells = useCallback((bounds: LatLngBounds) => {
-    const zoom = map.getZoom();
-    const dynamicGridSize = zoom < 14 ? GRID_SIZE_LOW_ZOOM : GRID_SIZE_HIGH_ZOOM;
-    
-    // Prefetching: Add a buffer (50% of the view's size) around the current viewport
-    const latBuffer = (bounds.getNorth() - bounds.getSouth()) * 0.5;
-    const lonBuffer = (bounds.getEast() - bounds.getWest()) * 0.5;
-    
-    const minLat = Math.floor((bounds.getSouth() - latBuffer) / dynamicGridSize);
-    const maxLat = Math.floor((bounds.getNorth() + latBuffer) / dynamicGridSize);
-    const minLon = Math.floor((bounds.getWest() - lonBuffer) / dynamicGridSize);
-    const maxLon = Math.floor((bounds.getEast() + lonBuffer) / dynamicGridSize);
+    const minLat = Math.floor(bounds.getSouth() / GRID_SIZE);
+    const maxLat = Math.floor(bounds.getNorth() / GRID_SIZE);
+    const minLon = Math.floor(bounds.getWest() / GRID_SIZE);
+    const maxLon = Math.floor(bounds.getEast() / GRID_SIZE);
     
     const cells: string[] = [];
     for (let lat = minLat; lat <= maxLat; lat++) {
@@ -96,26 +94,42 @@ const TrashBinFetcher = () => {
       }
     }
     return cells;
-  }, [map]);
+  }, []);
 
   const getCellBounds = useCallback((cellKey: string) => {
-    const zoom = map.getZoom();
-    const dynamicGridSize = zoom < 14 ? GRID_SIZE_LOW_ZOOM : GRID_SIZE_HIGH_ZOOM;
     const [latIdx, lonIdx] = cellKey.split(':').map(Number);
     return {
-      s: latIdx * dynamicGridSize,
-      w: lonIdx * dynamicGridSize,
-      n: (latIdx + 1) * dynamicGridSize,
-      e: (lonIdx + 1) * dynamicGridSize,
+      s: latIdx * GRID_SIZE,
+      w: lonIdx * GRID_SIZE,
+      n: (latIdx + 1) * GRID_SIZE,
+      e: (lonIdx + 1) * GRID_SIZE,
     };
-  }, [map]);
+  }, []);
 
   const processQueue = useCallback(async () => {
     if (activeRequests.current >= MAX_CONCURRENT_REQUESTS || cellQueue.current.length === 0) {
       return;
     }
 
-    const maxBatchSize = 6; // Combine up to 6 adjacent grid cells into one request
+    const now = Date.now();
+    
+    // Select best mirror: 
+    // 1. Not currently in progress
+    // 2. Not used in last 3 seconds (to avoid 429)
+    // 3. Lowest failure count
+    const availableMirrors = API_ENDPOINTS
+      .filter(url => !mirrorsInProgress.current.has(url))
+      .filter(url => (now - (endpointStatus.get(url)?.lastUsed || 0)) > 3000)
+      .sort((a, b) => (endpointStatus.get(a)?.failureCount || 0) - (endpointStatus.get(b)?.failureCount || 0));
+
+    if (availableMirrors.length === 0) {
+      // All mirrors are busy, recently used, or failing. Wait and retry.
+      setTimeout(() => processQueue(), 1000);
+      return;
+    }
+
+    const endpoint = availableMirrors[0];
+    const maxBatchSize = 4; // Smaller batches with larger grid
     const cellsToFetch = cellQueue.current.splice(0, maxBatchSize);
     if (cellsToFetch.length === 0) return;
 
@@ -123,8 +137,11 @@ const TrashBinFetcher = () => {
     cellsToFetch.forEach(c => activeGridCells.current.add(c));
     setLoadingCount(prev => prev + 1);
     activeRequests.current++;
+    mirrorsInProgress.current.add(endpoint);
+    
+    const status = endpointStatus.get(endpoint)!;
+    status.lastUsed = Date.now();
 
-    // Calculate combined bounding box for the entire batch
     const allBounds = cellsToFetch.map(getCellBounds);
     const s = Math.min(...allBounds.map(b => b.s));
     const w = Math.min(...allBounds.map(b => b.w));
@@ -151,79 +168,65 @@ const TrashBinFetcher = () => {
       out center qt;
     `;
 
-    let success = false;
-    let lastError: any = null;
-    const shuffledEndpoints = [...API_ENDPOINTS].sort(() => Math.random() - 0.5);
-
     try {
-      for (const endpoint of shuffledEndpoints) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
-          
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `data=${encodeURIComponent(overpassQuery)}`,
-            signal: controller.signal,
-          });
-          
-          clearTimeout(timeoutId);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `data=${encodeURIComponent(overpassQuery)}`,
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
 
-          if (response.ok) {
-            const data = await response.json();
-            const newBins = data.elements.map((element: any) => ({
-              id: element.id,
-              lat: element.type === 'node' ? element.lat : element.center.lat,
-              lon: element.type === 'node' ? element.lon : element.center.lon,
-              tags: element.tags || {},
-            }));
-            
-            setTrashBins(prevBins => {
-              const binMap = new Map(prevBins.map(b => [b.id, b]));
-              newBins.forEach((b: TrashBin) => binMap.set(b.id, b));
-              return Array.from(binMap.values());
-            });
+      if (response.ok) {
+        status.failureCount = 0; // Reset failures on success
+        const data = await response.json();
+        
+        const newBins = data.elements.map((element: any) => ({
+          id: element.id,
+          lat: element.type === 'node' ? element.lat : element.center.lat,
+          lon: element.type === 'node' ? element.lon : element.center.lon,
+          tags: element.tags || {},
+        }));
+        
+        setTrashBins(prevBins => {
+          const binMap = new Map(prevBins.map(b => [b.id, b]));
+          newBins.forEach((b: TrashBin) => binMap.set(b.id, b));
+          return Array.from(binMap.values());
+        });
 
-            cellsToFetch.forEach(c => {
-              fetchedGridCells.current.add(c);
-              activeGridCells.current.delete(c);
-            });
-            success = true;
-            break; 
-          }
-          
-          if (response.status === 429 || response.status === 504) {
-            lastError = new Error(`API Busy/Timeout (${response.status})`);
-            continue; 
-          }
-          throw new Error(`API Error ${response.status}`);
-        } catch (err: any) {
-          lastError = err;
-          if (err.name === 'AbortError') lastError = new Error('Client Timeout');
+        cellsToFetch.forEach(c => fetchedGridCells.current.add(c));
+        setMapMessage(null);
+      } else {
+        if (response.status === 429) {
+          // Extra penalty for 429
+          status.lastUsed = Date.now() + 5000; 
         }
+        throw new Error(`API Error ${response.status}`);
       }
-
-      if (!success) throw lastError;
-      setMapMessage(null);
-
     } catch (err: any) {
-      console.error("Fetch batch error:", err, "Cells:", cellsToFetch);
-      cellsToFetch.forEach(c => activeGridCells.current.delete(c));
-      // Use functional update to check if we have bins
+      console.error(`Fetch error from ${endpoint}:`, err);
+      status.failureCount++;
+      // Put cells back in front of queue to retry
+      cellQueue.current.unshift(...cellsToFetch);
+      
       setTrashBins(prev => {
         if (prev.length === 0) {
-          setMapMessage(`Connection issues. Try zooming in or moving the map.`);
+          setMapMessage(`Connection issues. Retrying...`);
         }
         return prev;
       });
     } finally {
+      cellsToFetch.forEach(c => activeGridCells.current.delete(c));
+      mirrorsInProgress.current.delete(endpoint);
       setLoadingCount(prev => Math.max(0, prev - 1));
       activeRequests.current--;
-      // Process next in queue with a small delay to let React breathe
       setTimeout(() => processQueue(), 50);
     }
-  }, [map, getCellBounds]); // Added getCellBounds as it's used inside
+  }, [map, getCellBounds]);
 
   const getIconForBin = (bin: TrashBin) => {
     const isRecycling = bin.tags.amenity === 'recycling' || 
@@ -363,7 +366,6 @@ const TrashBinFetcher = () => {
               key={bin.id} 
               position={[bin.lat, bin.lon]} 
               icon={getIconForBin(bin)}
-              // Pass recycling status as a custom option for the cluster icon function
               {...({ isRecycling } as any)}
             >
               <Popup maxWidth={250} minWidth={150}>
