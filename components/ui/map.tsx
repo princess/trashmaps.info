@@ -218,6 +218,46 @@ const TrashBinFetcher = () => {
     return isRecycling ? recyclingTrashIcon : generalTrashIcon;
   };
 
+  const createClusterIcon = (cluster: any) => {
+    const markers = cluster.getAllChildMarkers();
+    let recyclingCount = 0;
+    const total = markers.length;
+
+    markers.forEach((m: any) => {
+      // Access custom property we added to marker
+      if (m.options.isRecycling) recyclingCount++;
+    });
+
+    const recyclingPercent = (recyclingCount / total) * 100;
+    
+    // Green (#22c55e) for recycling, Gray (#6b7280) for general
+    const background = `conic-gradient(#22c55e 0% ${recyclingPercent}%, #6b7280 ${recyclingPercent}% 100%)`;
+    
+    return divIcon({
+      html: `
+        <div style="
+          background: ${background};
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 2px solid white;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          color: white;
+          font-weight: bold;
+          font-size: 12px;
+          text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        ">
+          ${total}
+        </div>
+      `,
+      className: 'custom-cluster-icon',
+      iconSize: [36, 36]
+    });
+  };
+
   const handleMapChange = useCallback(async () => {
     const zoom = map.getZoom();
     if (zoom < MIN_ZOOM_FOR_FETCH) {
@@ -267,14 +307,25 @@ const TrashBinFetcher = () => {
         spiderfyOnMaxZoom={true}
         showCoverageOnHover={false}
         disableClusteringAtZoom={19}
+        iconCreateFunction={createClusterIcon}
       >
-        {trashBins.map((bin) => (
-          <Marker key={bin.id} position={[bin.lat, bin.lon]} icon={getIconForBin(bin)}>
-            <Popup maxWidth={250} minWidth={150}>
-              <BinPopup bin={bin} />
-            </Popup>
-          </Marker>
-        ))}
+        {trashBins.map((bin) => {
+          const isRecycling = bin.tags.amenity === 'recycling' || 
+                             Object.keys(bin.tags).some(key => key.startsWith('recycling') && bin.tags[key] === 'yes');
+          return (
+            <Marker 
+              key={bin.id} 
+              position={[bin.lat, bin.lon]} 
+              icon={getIconForBin(bin)}
+              // Pass recycling status as a custom option for the cluster icon function
+              {...({ isRecycling } as any)}
+            >
+              <Popup maxWidth={250} minWidth={150}>
+                <BinPopup bin={bin} />
+              </Popup>
+            </Marker>
+          );
+        })}
       </MarkerClusterGroup>
       {isLoading && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] p-4 bg-white/80 backdrop-blur-sm rounded-full shadow-lg flex items-center justify-center">
