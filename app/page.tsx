@@ -9,7 +9,7 @@ import { Map } from "@/components/ui/dynamic-map"
 import AddressSearch from "@/components/ui/address-search"
 export default function TrashMapsHome() {
   const [showWelcomeModal, setShowWelcomeModal] = useState(true)
-  const [mapCenter, setMapCenter] = useState<[number, number]>([51.505, -0.09]); // Default to London
+  const [mapCenter, setMapCenter] = useState<[number, number]>([51.505, -0.09]); // London
   const [mapZoom, setMapZoom] = useState(14); // Start at zoom level 14 or higher
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [isLocating, setIsLocating] = useState(false);

@@ -6,7 +6,7 @@ import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 import { MapContainer, TileLayer, useMap, Marker, Popup, useMapEvents, ZoomControl } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import { LatLngExpression, Icon, divIcon, LatLngBounds } from 'leaflet';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 
 // Custom icons for trash bins
 const generalTrashIcon = new Icon({
@@ -66,6 +66,7 @@ const TrashBinFetcher = () => {
   const [trashBins, setTrashBins] = useState<TrashBin[]>([]);
   const [loadingCount, setLoadingCount] = useState(0);
   const [mapMessage, setMapMessage] = useState<string | null>(null);
+  const [renderBounds, setRenderBounds] = useState<LatLngBounds | null>(null);
   
   // Grid-based cache state
   const fetchedGridCells = useRef<Set<string>>(new Set());
@@ -77,32 +78,45 @@ const TrashBinFetcher = () => {
 
   const MIN_ZOOM_FOR_FETCH = 10;
   const REQUEST_TIMEOUT = 60000; 
-  const GRID_SIZE = 0.02; // Small, reliable grid size
   const MAX_CONCURRENT_REQUESTS = 3;
   const mirrorsInProgress = useRef<Set<string>>(new Set());
 
+  const getGridSize = useCallback((zoom: number) => {
+    if (zoom >= 16) return 0.02; // ~2km
+    if (zoom >= 14) return 0.08; // ~8km
+    if (zoom >= 12) return 0.24; // ~24km
+    return 0.6; // ~60km for zoom 10-11
+  }, []);
+
   const getGridCells = useCallback((bounds: LatLngBounds) => {
-    const minLat = Math.floor(bounds.getSouth() / GRID_SIZE);
-    const maxLat = Math.floor(bounds.getNorth() / GRID_SIZE);
-    const minLon = Math.floor(bounds.getWest() / GRID_SIZE);
-    const maxLon = Math.floor(bounds.getEast() / GRID_SIZE);
+    const zoom = map.getZoom();
+    const gridSize = getGridSize(zoom);
+    const minLat = Math.floor(bounds.getSouth() / gridSize);
+    const maxLat = Math.floor(bounds.getNorth() / gridSize);
+    const minLon = Math.floor(bounds.getWest() / gridSize);
+    const maxLon = Math.floor(bounds.getEast() / gridSize);
     
     const cells: string[] = [];
     for (let lat = minLat; lat <= maxLat; lat++) {
       for (let lon = minLon; lon <= maxLon; lon++) {
-        cells.push(`${lat}:${lon}`);
+        // Include gridSize in the key to prevent overlap between zoom levels
+        cells.push(`${gridSize}:${lat}:${lon}`);
       }
     }
     return cells;
-  }, []);
+  }, [map, getGridSize]);
 
   const getCellBounds = useCallback((cellKey: string) => {
-    const [latIdx, lonIdx] = cellKey.split(':').map(Number);
+    const [gridSizeStr, latIdxStr, lonIdxStr] = cellKey.split(':');
+    const gridSize = parseFloat(gridSizeStr);
+    const latIdx = parseInt(latIdxStr);
+    const lonIdx = parseInt(lonIdxStr);
+    
     return {
-      s: latIdx * GRID_SIZE,
-      w: lonIdx * GRID_SIZE,
-      n: (latIdx + 1) * GRID_SIZE,
-      e: (lonIdx + 1) * GRID_SIZE,
+      s: latIdx * gridSize,
+      w: lonIdx * gridSize,
+      n: (latIdx + 1) * gridSize,
+      e: (lonIdx + 1) * gridSize,
     };
   }, []);
 
@@ -149,24 +163,12 @@ const TrashBinFetcher = () => {
     const e = Math.max(...allBounds.map(b => b.e));
 
     const isLowZoom = zoom < 14;
-    const overpassQuery = isLowZoom ? `
-      [out:json][timeout:60][maxsize:1000000];
-      (
-        node["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
-        node["bin"="yes"](${s},${w},${n},${e});
-      );
-      out center 1500 qt;
-    ` : `
-      [out:json][timeout:60][maxsize:2000000];
-      (
-        node["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
-        node["bin"="yes"](${s},${w},${n},${e});
-        way["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
-        way["bin"="yes"](${s},${w},${n},${e});
-        relation["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
-      );
-      out center qt;
-    `;
+    const limit = isLowZoom ? 800 : 2000;
+    
+    // Minified query to avoid encoding issues with some mirrors
+    const overpassQuery = isLowZoom 
+      ? `[out:json][timeout:60];(node["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});node["bin"="yes"](${s},${w},${n},${e}););out center ${limit};`
+      : `[out:json][timeout:60];(node["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});node["bin"="yes"](${s},${w},${n},${e});way["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});way["bin"="yes"](${s},${w},${n},${e});relation["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e}););out center ${limit};`;
 
     try {
       const controller = new AbortController();
@@ -182,10 +184,10 @@ const TrashBinFetcher = () => {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        status.failureCount = 0; // Reset failures on success
+        status.failureCount = 0; 
         const data = await response.json();
         
-        const newBins = data.elements.map((element: any) => ({
+        const newBins = (data.elements || []).map((element: any) => ({
           id: element.id,
           lat: element.type === 'node' ? element.lat : element.center.lat,
           lon: element.type === 'node' ? element.lon : element.center.lon,
@@ -303,36 +305,48 @@ const TrashBinFetcher = () => {
     });
   };
 
-  const handleMapChange = useCallback(async () => {
-    const zoom = map.getZoom();
-    if (zoom < MIN_ZOOM_FOR_FETCH) {
-      setMapMessage("Please zoom in to find trash bins.");
-      return;
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMapChange = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
 
-    const currentBounds = map.getBounds();
-    if (!currentBounds || !currentBounds.getNorth) return; // Safety check
+    debounceTimerRef.current = setTimeout(async () => {
+      const zoom = map.getZoom();
+      
+      // Update render bounds whenever map changes
+      setRenderBounds(map.getBounds());
 
-    const visibleCells = getGridCells(currentBounds);
-    
-    const newCells = visibleCells.filter(c => 
-      !fetchedGridCells.current.has(c) && 
-      !activeGridCells.current.has(c) && 
-      !cellQueue.current.includes(c)
-    );
+      if (zoom < MIN_ZOOM_FOR_FETCH) {
+        setMapMessage("Please zoom in to find trash bins.");
+        return;
+      }
 
-    if (newCells.length === 0) {
-      if (activeRequests.current === 0) setMapMessage(null);
-      return;
-    }
+      const currentBounds = map.getBounds();
+      if (!currentBounds || !currentBounds.getNorth) return; // Safety check
 
-    // Add new cells to queue
-    cellQueue.current.push(...newCells);
-    
-    // Start processing queue (up to MAX_CONCURRENT_REQUESTS)
-    for (let i = 0; i < MAX_CONCURRENT_REQUESTS; i++) {
-      processQueue();
-    }
+      const visibleCells = getGridCells(currentBounds);
+      
+      const newCells = visibleCells.filter(c => 
+        !fetchedGridCells.current.has(c) && 
+        !activeGridCells.current.has(c) && 
+        !cellQueue.current.includes(c)
+      );
+
+      if (newCells.length === 0) {
+        if (activeRequests.current === 0) setMapMessage(null);
+        return;
+      }
+
+      // Add new cells to queue
+      cellQueue.current.push(...newCells);
+      
+      // Start processing queue (up to MAX_CONCURRENT_REQUESTS)
+      for (let i = 0; i < MAX_CONCURRENT_REQUESTS; i++) {
+        processQueue();
+      }
+    }, 400); // 400ms debounce
   }, [map, processQueue, getGridCells]);
 
   useMapEvents({
@@ -343,8 +357,17 @@ const TrashBinFetcher = () => {
   useEffect(() => {
     if (map) {
       handleMapChange();
+      // Set initial render bounds
+      setRenderBounds(map.getBounds());
     }
   }, [map, handleMapChange]);
+
+  const visibleBins = useMemo(() => {
+    if (!renderBounds) return trashBins;
+    // Pad by 20% to prevent markers disappearing at edges
+    const padded = renderBounds.pad(0.2);
+    return trashBins.filter(bin => padded.contains([bin.lat, bin.lon]));
+  }, [trashBins, renderBounds]);
 
   const isLoading = loadingCount > 0;
 
@@ -358,7 +381,7 @@ const TrashBinFetcher = () => {
         disableClusteringAtZoom={19}
         iconCreateFunction={createClusterIcon}
       >
-        {trashBins.map((bin) => {
+        {visibleBins.map((bin: TrashBin) => {
           const isRecycling = bin.tags.amenity === 'recycling' || 
                              Object.keys(bin.tags).some(key => key.startsWith('recycling') && bin.tags[key] === 'yes');
           return (
