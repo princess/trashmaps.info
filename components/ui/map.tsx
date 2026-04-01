@@ -76,15 +76,14 @@ const TrashBinFetcher = () => {
 
   const map = useMap();
 
-  const MIN_ZOOM_FOR_FETCH = 13;
+  const MIN_ZOOM_FOR_FETCH = 15;
   const REQUEST_TIMEOUT = 60000; 
   const MAX_CONCURRENT_REQUESTS = 3;
   const mirrorsInProgress = useRef<Set<string>>(new Set());
 
   const getGridSize = useCallback((zoom: number) => {
     if (zoom >= 16) return 0.02; // ~2km
-    if (zoom >= 14) return 0.08; // ~8km
-    return 0.24; // ~24km for zoom 13
+    return 0.05; // ~5km for zoom 15
   }, []);
 
   const getGridCells = useCallback((bounds: LatLngBounds) => {
