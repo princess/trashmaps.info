@@ -12,11 +12,13 @@ export default function TrashMapsHome() {
   const [mapCenter, setMapCenter] = useState<[number, number]>([51.505, -0.09]); // London
   const [mapZoom, setMapZoom] = useState(14); // Start at zoom level 14 or higher
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const [searchedLocation, setSearchedLocation] = useState<[number, number] | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
   const handleSelectLocation = useCallback((lat: number, lon: number) => {
     setMapCenter([lat, lon]);
+    setSearchedLocation([lat, lon]);
     setMapZoom(16);
   }, []);
 
@@ -174,7 +176,7 @@ export default function TrashMapsHome() {
 
       {/* Full Screen Map */}
       <div className="absolute top-0 left-0 h-full w-full z-0">
-        <Map center={mapCenter} userLocation={userLocation} zoom={mapZoom} />  
+        <Map center={mapCenter} userLocation={userLocation} searchedLocation={searchedLocation} zoom={mapZoom} />  
       </div>
       </main>
 

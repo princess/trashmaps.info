@@ -7,6 +7,7 @@ import { LatLngExpression } from 'leaflet';
 interface MapProps {
   center: LatLngExpression;
   userLocation: LatLngExpression | null;
+  searchedLocation?: LatLngExpression | null;
   zoom: number;
 }
 
