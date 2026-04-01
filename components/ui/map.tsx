@@ -445,12 +445,35 @@ const BinPopup = ({ bin }: { bin: TrashBin }) => {
         const fetchAddress = async () => {
             setIsLoading(true);
             try {
-                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${bin.lat}&lon=${bin.lon}&format=json`);
+                // Use addressdetails=1 to get specific fields
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${bin.lat}&lon=${bin.lon}&format=json&addressdetails=1`);
                 if (!response.ok) throw new Error("Failed to fetch address");
                 const data = await response.json();
-                const displayName = data.display_name || "Address not found";
-                setAddress(displayName);
-                addressCache.set(cacheKey, displayName);
+                
+                let displayStr = "";
+                const addr = data.address;
+                
+                if (addr) {
+                    // Try to build "House Number Street Name"
+                    const street = addr.road || addr.pedestrian || addr.cycleway || addr.footway || addr.path;
+                    const houseNumber = addr.house_number;
+                    
+                    if (street) {
+                        displayStr = houseNumber ? `${houseNumber} ${street}` : street;
+                        
+                        // Add City/Town if available for context
+                        const city = addr.city || addr.town || addr.village || addr.suburb;
+                        if (city) displayStr += `, ${city}`;
+                    } else {
+                        // Fallback to full display name if road is missing
+                        displayStr = data.display_name;
+                    }
+                } else {
+                    displayStr = data.display_name || "Address not found";
+                }
+
+                setAddress(displayStr);
+                addressCache.set(cacheKey, displayStr);
             } catch (error) {
                 console.error("Reverse geocoding error:", error);
                 setAddress("Could not load address.");

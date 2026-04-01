@@ -17,6 +17,14 @@ interface NominatimResult {
   display_name: string;
   type?: string;
   address?: {
+    house_number?: string;
+    road?: string;
+    pedestrian?: string;
+    footway?: string;
+    cycleway?: string;
+    path?: string;
+    neighbourhood?: string;
+    suburb?: string;
     city?: string;
     town?: string;
     village?: string;
@@ -141,18 +149,32 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
     setError(null);
   };
 
-  const parseDisplayName = (displayName: string) => {
-    const parts = displayName.split(',').map(p => p.trim());
-    
-    // If the first part is just a number (like a house number), 
-    // we want to combine it with the second part (the street).
-    if (parts.length > 1 && /^\d+$/.test(parts[0])) {
-        return {
-            title: `${parts[0]} ${parts[1]}`,
-            subtitle: parts.slice(2).join(', ')
-        };
+  const parseDisplayName = (result: NominatimResult) => {
+    const addr = result.address;
+    if (!addr) {
+        const parts = result.display_name.split(',').map(p => p.trim());
+        return { title: parts[0], subtitle: parts.slice(1).join(', ') };
     }
+
+    // Prioritize Street Address: "HouseNumber Road"
+    const street = addr.road || addr.pedestrian || addr.cycleway || addr.footway || addr.path;
+    const houseNumber = addr.house_number;
     
+    if (street) {
+        const title = houseNumber ? `${houseNumber} ${street}` : street;
+        
+        // Build subtitle: [Neighborhood/Suburb], City, Country
+        const secondary = [
+            addr.neighbourhood || addr.suburb,
+            addr.city || addr.town || addr.village,
+            addr.country
+        ].filter(Boolean).join(', ');
+
+        return { title, subtitle: secondary };
+    }
+
+    // Fallback if no road is found (e.g. searching for a city or neighborhood directly)
+    const parts = result.display_name.split(',').map(p => p.trim());
     return {
         title: parts[0],
         subtitle: parts.slice(1).join(', ')
@@ -200,7 +222,7 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
           ) : (
             <ul className="max-h-[320px] overflow-y-auto custom-scrollbar">
               {results.map((result, index) => {
-                const { title, subtitle } = parseDisplayName(result.display_name);
+                const { title, subtitle } = parseDisplayName(result);
                 return (
                   <li
                     key={`${result.lat}-${result.lon}-${index}`}
