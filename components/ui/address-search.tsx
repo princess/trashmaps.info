@@ -3,7 +3,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Search, X, Loader2, MapPin } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface AddressSearchProps {
@@ -17,25 +16,8 @@ interface NominatimResult {
   display_name: string;
   class?: string;
   type?: string;
-  address?: {
-    house_number?: string;
-    road?: string;
-    pedestrian?: string;
-    footway?: string;
-    cycleway?: string;
-    path?: string;
-    neighbourhood?: string;
-    suburb?: string;
-    city?: string;
-    town?: string;
-    village?: string;
-    state?: string;
-    country?: string;
-    amenity?: string;
-    shop?: string;
-    tourism?: string;
-    leisure?: string;
-  };
+  title: string;
+  subtitle: string;
 }
 
 const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) => {
@@ -45,9 +27,28 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
   const [error, setError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [cityContext, setCityContext] = useState("");
   
   const containerRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const latestCenterRef = useRef(currentCenter);
+
+  useEffect(() => {
+    latestCenterRef.current = currentCenter;
+    if (!currentCenter) return;
+    
+    const getContext = async () => {
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${currentCenter[0]}&lon=${currentCenter[1]}&format=json`);
+            if (res.ok) {
+                const data = await res.json();
+                const city = data.address.city || data.address.town || data.address.village || data.address.suburb || "";
+                setCityContext(city);
+            }
+        } catch (e) {}
+    };
+    getContext();
+  }, [currentCenter?.[0], currentCenter?.[1]]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -72,59 +73,75 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
     setError(null);
 
     try {
-      let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=15&addressdetails=1`;
+      const activeCenter = latestCenterRef.current;
       
-      // Add spatial biasing if we have a current center
-      if (currentCenter) {
-        const [lat, lon] = currentCenter;
-        // Narrower viewbox (roughly 10km) for stronger local biasing
-        const viewbox = `${lon - 0.1},${lat + 0.1},${lon + 0.1},${lat - 0.1}`;
-        url += `&viewbox=${viewbox}&bounded=0`;
-      }
-
-      const response = await fetch(url, {
-        headers: {
-          'Accept-Language': 'en-US,en;q=0.9',
+      const fetchPhoton = async (q: string, bias: boolean) => {
+        let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=15`;
+        if (bias && activeCenter) {
+            url += `&lat=${activeCenter[0]}&lon=${activeCenter[1]}&location_bias_scale=0.9`;
         }
-      });
-      
-      if (!response.ok) throw new Error(`Search failed`);
-      
-      let data: NominatimResult[] = await response.json();
+        const res = await fetch(url);
+        return res.ok ? await res.json() : { features: [] };
+      };
 
-      // Custom sorting to prioritize local results and businesses
-      if (currentCenter) {
-        const [cLat, cLon] = currentCenter;
-        data = data.sort((a, b) => {
-            const aIsLocal = Math.abs(parseFloat(a.lat) - cLat) < 0.1 && Math.abs(parseFloat(a.lon) - cLon) < 0.1;
-            const bIsLocal = Math.abs(parseFloat(b.lat) - cLat) < 0.1 && Math.abs(parseFloat(b.lon) - cLon) < 0.1;
+      // Force local priority by appending city name to POI searches
+      const finalQuery = cityContext && !searchQuery.includes(' ') ? `${searchQuery} ${cityContext}` : searchQuery;
+      const data = await fetchPhoton(finalQuery, true);
+      
+      const mappedResults: NominatimResult[] = data.features.map((f: any) => {
+        const p = f.properties;
+        const coords = f.geometry.coordinates;
+        
+        const title = p.name || (p.housenumber ? `${p.housenumber} ${p.street}` : p.street) || p.city || p.country;
+        const subtitleParts = [];
+        
+        if (p.osm_value && p.osm_value !== 'yes' && p.osm_value !== title.toLowerCase()) {
+            subtitleParts.push(p.osm_value.charAt(0).toUpperCase() + p.osm_value.slice(1).replace(/_/g, ' '));
+        }
+
+        const streetAddr = p.housenumber ? `${p.housenumber} ${p.street}` : p.street;
+        if (streetAddr && streetAddr !== title) subtitleParts.push(streetAddr);
+        if (p.city && p.city !== title) subtitleParts.push(p.city);
+        if (p.state) subtitleParts.push(p.state);
+        if (p.country && p.country !== title) subtitleParts.push(p.country);
+
+        return {
+          lat: coords[1].toString(),
+          lon: coords[0].toString(),
+          display_name: title + ", " + subtitleParts.join(', '),
+          class: p.osm_key,
+          type: p.osm_value,
+          title: title,
+          subtitle: subtitleParts.filter(Boolean).join(', ')
+        };
+      });
+
+      // STRICT distance sort within 5km
+      if (activeCenter) {
+        const [cLat, cLon] = activeCenter;
+        mappedResults.sort((a, b) => {
+            const aDist = Math.sqrt(Math.pow(parseFloat(a.lat) - cLat, 2) + Math.pow(parseFloat(a.lon) - cLon, 2));
+            const bDist = Math.sqrt(Math.pow(parseFloat(b.lat) - cLat, 2) + Math.pow(parseFloat(b.lon) - cLon, 2));
             
-            // Priority 1: Both are local, or both are not local -> sort by business/amenity type
-            if (aIsLocal === bIsLocal) {
-                const aIsBusiness = ['amenity', 'shop', 'tourism', 'leisure'].includes(a.class || '');
-                const bIsBusiness = ['amenity', 'shop', 'tourism', 'leisure'].includes(b.class || '');
-                
-                if (aIsBusiness && !bIsBusiness) return -1;
-                if (!aIsBusiness && bIsBusiness) return 1;
-                return 0;
-            }
-            
-            // Priority 2: One is local, one is not
-            return aIsLocal ? -1 : 1;
+            // If one is within ~2km (0.02 deg) and the other isn't, prioritize it heavily
+            if (aDist < 0.02 && bDist >= 0.02) return -1;
+            if (bDist < 0.02 && aDist >= 0.02) return 1;
+
+            return aDist - bDist;
         });
       }
 
-      setResults(data.slice(0, 10)); // Keep top 10 after sorting
+      setResults(mappedResults.slice(0, 10));
       setIsOpen(true);
       setSelectedIndex(-1);
     } catch (err) {
       console.error("Search error:", err);
-      setError("Failed to load results");
+      setError("Search failed. Please try again.");
       setResults([]);
     } finally {
       setLoading(false);
     }
-  }, [currentCenter]);
+  }, [cityContext]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newQuery = e.target.value;
@@ -149,7 +166,7 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
     onSelectLocation(parseFloat(result.lat), parseFloat(result.lon), result.display_name);
     setResults([]);
     setIsOpen(false);
-    setQuery(result.display_name);
+    setQuery(result.title);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -168,61 +185,6 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
     } else if (e.key === 'Escape') {
       setIsOpen(false);
     }
-  };
-
-  const clearSearch = () => {
-    setQuery('');
-    setResults([]);
-    setIsOpen(false);
-    setError(null);
-  };
-
-  const parseDisplayName = (result: NominatimResult) => {
-    const addr = result.address;
-    const parts = result.display_name.split(',').map(p => p.trim());
-    
-    if (!addr) {
-        return { title: parts[0], subtitle: parts.slice(1).join(', ') };
-    }
-
-    const street = addr.road || addr.pedestrian || addr.cycleway || addr.footway || addr.path;
-    const houseNumber = addr.house_number;
-    const placeName = parts[0];
-    
-    let title = placeName;
-    let subtitleParts: string[] = [];
-
-    // If the first part is just a house number, combine it with the street
-    if (/^\d+$/.test(placeName) && street) {
-        title = `${placeName} ${street}`;
-        subtitleParts = parts.slice(2);
-    } else if (placeName === street) {
-        // If the place name IS the street (no business name), 
-        // try to include house number in title
-        title = houseNumber ? `${houseNumber} ${street}` : street;
-        subtitleParts = parts.slice(houseNumber ? 2 : 1);
-    } else {
-        // It's a business name or landmark!
-        title = placeName;
-        // Include the street address in the subtitle if possible
-        const streetAddress = houseNumber ? `${houseNumber} ${street}` : street;
-        if (streetAddress && !placeName.includes(streetAddress)) {
-            subtitleParts.push(streetAddress);
-        }
-        subtitleParts.push(...parts.slice(1).filter(p => p !== street && p !== houseNumber));
-    }
-
-    // Add category/type for that Google Maps feel
-    if (result.type && result.type !== 'yes' && result.type !== 'point') {
-        const category = result.type.replace(/_/g, ' ');
-        title = `${title}`; // Keep title clean
-        subtitleParts.unshift(category.charAt(0).toUpperCase() + category.slice(1));
-    }
-
-    return { 
-        title, 
-        subtitle: subtitleParts.filter(Boolean).join(', ') 
-    };
   };
 
   return (
@@ -248,7 +210,11 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
         )}
         {!loading && query && (
             <button 
-                onClick={clearSearch}
+                onClick={() => {
+                    setQuery('');
+                    setResults([]);
+                    setIsOpen(false);
+                }}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
             >
                 <X className="h-3.5 w-3.5" />
@@ -265,37 +231,34 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
             </div>
           ) : (
             <ul className="max-h-[320px] overflow-y-auto custom-scrollbar">
-              {results.map((result, index) => {
-                const { title, subtitle } = parseDisplayName(result);
-                return (
-                  <li
-                    key={`${result.lat}-${result.lon}-${index}`}
-                    className={cn(
-                      "px-4 py-3 cursor-pointer transition-colors flex items-start gap-3 border-l-4",
-                      selectedIndex === index 
-                          ? "bg-green-50 border-green-500 text-green-900" 
-                          : "hover:bg-gray-50 border-transparent text-gray-700"
-                    )}
-                    onClick={() => handleSelectResult(result)}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                  >
-                    <MapPin className={cn(
-                        "h-4 w-4 mt-0.5 shrink-0",
-                        selectedIndex === index ? "text-green-600" : "text-gray-400"
-                    )} />
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium line-clamp-2 leading-snug">
-                          {title}
+              {results.map((result, index) => (
+                <li
+                  key={`${result.lat}-${result.lon}-${index}`}
+                  className={cn(
+                    "px-4 py-3 cursor-pointer transition-colors flex items-start gap-3 border-l-4",
+                    selectedIndex === index 
+                        ? "bg-green-50 border-green-500 text-green-900" 
+                        : "hover:bg-gray-50 border-transparent text-gray-700"
+                  )}
+                  onClick={() => handleSelectResult(result)}
+                  onMouseEnter={() => setSelectedIndex(index)}
+                >
+                  <MapPin className={cn(
+                      "h-4 w-4 mt-0.5 shrink-0",
+                      selectedIndex === index ? "text-green-600" : "text-gray-400"
+                  )} />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium line-clamp-2 leading-snug">
+                        {result.title}
+                    </span>
+                    {result.subtitle && (
+                      <span className="text-[11px] text-gray-500 line-clamp-1 italic">
+                          {result.subtitle}
                       </span>
-                      {subtitle && (
-                        <span className="text-[11px] text-gray-500 line-clamp-1 italic">
-                            {subtitle}
-                        </span>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
+                    )}
+                  </div>
+                </li>
+              ))}
             </ul>
           )}
         </div>
