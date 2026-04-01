@@ -1,7 +1,10 @@
 "use client";
 
 import 'leaflet/dist/leaflet.css';
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
 import { MapContainer, TileLayer, useMap, Marker, Popup, useMapEvents, ZoomControl } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import { LatLngExpression, Icon, divIcon, LatLngBounds } from 'leaflet';
 import { useEffect, useState, useCallback, useRef } from 'react';
 
@@ -58,9 +61,9 @@ const TrashBinFetcher = () => {
 
   const map = useMap();
 
-  const MIN_ZOOM_FOR_FETCH = 14;
-  const REQUEST_TIMEOUT = 25000; // 25 seconds
-  const GRID_SIZE = 0.02; // Degrees
+  const MIN_ZOOM_FOR_FETCH = 10;
+  const REQUEST_TIMEOUT = 30000; // Increased to 30s for larger areas
+  const GRID_SIZE = 0.05; // Increased grid size for lower zoom
   const MAX_CONCURRENT_REQUESTS = 3;
   const API_ENDPOINTS = [
     'https://overpass-api.de/api/interpreter',
@@ -68,10 +71,14 @@ const TrashBinFetcher = () => {
   ];
 
   const getGridCells = (bounds: LatLngBounds) => {
-    const minLat = Math.floor(bounds.getSouth() / GRID_SIZE);
-    const maxLat = Math.floor(bounds.getNorth() / GRID_SIZE);
-    const minLon = Math.floor(bounds.getWest() / GRID_SIZE);
-    const maxLon = Math.floor(bounds.getEast() / GRID_SIZE);
+    const zoom = map.getZoom();
+    // Dynamic grid size based on zoom level to prevent too many small cells
+    const dynamicGridSize = zoom < 14 ? GRID_SIZE * 2 : GRID_SIZE;
+    
+    const minLat = Math.floor(bounds.getSouth() / dynamicGridSize);
+    const maxLat = Math.floor(bounds.getNorth() / dynamicGridSize);
+    const minLon = Math.floor(bounds.getWest() / dynamicGridSize);
+    const maxLon = Math.floor(bounds.getEast() / dynamicGridSize);
     
     const cells: string[] = [];
     for (let lat = minLat; lat <= maxLat; lat++) {
@@ -83,18 +90,21 @@ const TrashBinFetcher = () => {
   };
 
   const getCellBounds = (cellKey: string) => {
+    const zoom = map.getZoom();
+    const dynamicGridSize = zoom < 14 ? GRID_SIZE * 2 : GRID_SIZE;
     const [latIdx, lonIdx] = cellKey.split(':').map(Number);
     return {
-      s: latIdx * GRID_SIZE,
-      w: lonIdx * GRID_SIZE,
-      n: (latIdx + 1) * GRID_SIZE,
-      e: (lonIdx + 1) * GRID_SIZE,
+      s: latIdx * dynamicGridSize,
+      w: lonIdx * dynamicGridSize,
+      n: (latIdx + 1) * dynamicGridSize,
+      e: (lonIdx + 1) * dynamicGridSize,
     };
   };
 
   const fetchBatch = async (cellsToFetch: string[]) => {
     if (cellsToFetch.length === 0) return;
     
+    const zoom = map.getZoom();
     cellsToFetch.forEach(c => pendingGridCells.current.add(c));
     setLoadingCount(prev => prev + 1);
     activeRequests.current++;
@@ -106,7 +116,17 @@ const TrashBinFetcher = () => {
     const n = Math.max(...allBounds.map(b => b.n));
     const e = Math.max(...allBounds.map(b => b.e));
 
-    const overpassQuery = `
+    // Optimize query based on zoom level
+    // For low zoom, we fetch only nodes and limit to 1000 per request to stay fast
+    const isLowZoom = zoom < 14;
+    const overpassQuery = isLowZoom ? `
+      [out:json][timeout:30];
+      (
+        node["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
+        node["bin"="yes"](${s},${w},${n},${e});
+      );
+      out center 1000;
+    ` : `
       [out:json][timeout:30];
       (
         node["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
@@ -233,13 +253,20 @@ const TrashBinFetcher = () => {
 
   return (
     <>
-      {trashBins.map((bin) => (
-        <Marker key={bin.id} position={[bin.lat, bin.lon]} icon={getIconForBin(bin)}>
-          <Popup maxWidth={250} minWidth={150}>
-            <BinPopup bin={bin} />
-          </Popup>
-        </Marker>
-      ))}
+      <MarkerClusterGroup 
+        chunkedLoading 
+        maxClusterRadius={60}
+        spiderfyOnMaxZoom={true}
+        showCoverageOnHover={false}
+      >
+        {trashBins.map((bin) => (
+          <Marker key={bin.id} position={[bin.lat, bin.lon]} icon={getIconForBin(bin)}>
+            <Popup maxWidth={250} minWidth={150}>
+              <BinPopup bin={bin} />
+            </Popup>
+          </Marker>
+        ))}
+      </MarkerClusterGroup>
       {isLoading && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] p-4 bg-white/80 backdrop-blur-sm rounded-full shadow-lg flex items-center justify-center">
              <svg className="animate-spin h-8 w-8 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
