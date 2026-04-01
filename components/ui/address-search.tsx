@@ -15,6 +15,7 @@ interface NominatimResult {
   lat: string;
   lon: string;
   display_name: string;
+  class?: string;
   type?: string;
   address?: {
     house_number?: string;
@@ -30,6 +31,10 @@ interface NominatimResult {
     village?: string;
     state?: string;
     country?: string;
+    amenity?: string;
+    shop?: string;
+    tourism?: string;
+    leisure?: string;
   };
 }
 
@@ -67,7 +72,7 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
     setError(null);
 
     try {
-      let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=6&addressdetails=1`;
+      let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=10&addressdetails=1`;
       
       // Add spatial biasing if we have a current center
       if (currentCenter) {
@@ -151,33 +156,49 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
 
   const parseDisplayName = (result: NominatimResult) => {
     const addr = result.address;
+    const parts = result.display_name.split(',').map(p => p.trim());
+    
     if (!addr) {
-        const parts = result.display_name.split(',').map(p => p.trim());
         return { title: parts[0], subtitle: parts.slice(1).join(', ') };
     }
 
-    // Prioritize Street Address: "HouseNumber Road"
     const street = addr.road || addr.pedestrian || addr.cycleway || addr.footway || addr.path;
     const houseNumber = addr.house_number;
+    const placeName = parts[0];
     
-    if (street) {
-        const title = houseNumber ? `${houseNumber} ${street}` : street;
-        
-        // Build subtitle: [Neighborhood/Suburb], City, Country
-        const secondary = [
-            addr.neighbourhood || addr.suburb,
-            addr.city || addr.town || addr.village,
-            addr.country
-        ].filter(Boolean).join(', ');
+    let title = placeName;
+    let subtitleParts: string[] = [];
 
-        return { title, subtitle: secondary };
+    // If the first part is just a house number, combine it with the street
+    if (/^\d+$/.test(placeName) && street) {
+        title = `${placeName} ${street}`;
+        subtitleParts = parts.slice(2);
+    } else if (placeName === street) {
+        // If the place name IS the street (no business name), 
+        // try to include house number in title
+        title = houseNumber ? `${houseNumber} ${street}` : street;
+        subtitleParts = parts.slice(houseNumber ? 2 : 1);
+    } else {
+        // It's a business name or landmark!
+        title = placeName;
+        // Include the street address in the subtitle if possible
+        const streetAddress = houseNumber ? `${houseNumber} ${street}` : street;
+        if (streetAddress && !placeName.includes(streetAddress)) {
+            subtitleParts.push(streetAddress);
+        }
+        subtitleParts.push(...parts.slice(1).filter(p => p !== street && p !== houseNumber));
     }
 
-    // Fallback if no road is found (e.g. searching for a city or neighborhood directly)
-    const parts = result.display_name.split(',').map(p => p.trim());
-    return {
-        title: parts[0],
-        subtitle: parts.slice(1).join(', ')
+    // Add category/type for that Google Maps feel
+    if (result.type && result.type !== 'yes' && result.type !== 'point') {
+        const category = result.type.replace(/_/g, ' ');
+        title = `${title}`; // Keep title clean
+        subtitleParts.unshift(category.charAt(0).toUpperCase() + category.slice(1));
+    }
+
+    return { 
+        title, 
+        subtitle: subtitleParts.filter(Boolean).join(', ') 
     };
   };
 
