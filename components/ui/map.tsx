@@ -266,6 +266,7 @@ const TrashBinFetcher = () => {
         maxClusterRadius={60}
         spiderfyOnMaxZoom={true}
         showCoverageOnHover={false}
+        disableClusteringAtZoom={19}
       >
         {trashBins.map((bin) => (
           <Marker key={bin.id} position={[bin.lat, bin.lon]} icon={getIconForBin(bin)}>
@@ -390,10 +391,12 @@ const TrashMap = ({ center, userLocation, zoom }: MapProps) => {
         doubleClickZoom={true} // Re-enable double click zoom
         dragging={true} // Ensure dragging is enabled
         preferCanvas={true} // Use canvas rendering for better performance
+        maxZoom={20}
         >
       <TileLayer
         url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CartoDB</a>'
+        maxZoom={20}
       />
       <MapUpdater center={center} zoom={zoom} />
       <TrashBinFetcher />
