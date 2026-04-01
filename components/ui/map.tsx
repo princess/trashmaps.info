@@ -62,7 +62,7 @@ const endpointStatus = new Map<string, { lastUsed: number; failureCount: number 
 API_ENDPOINTS.forEach(url => endpointStatus.set(url, { lastUsed: 0, failureCount: 0 }));
 
 // This new component contains the logic for fetching and displaying trash bins
-const TrashBinFetcher = () => {
+const TrashBinFetcher = ({ center, zoom }: Pick<MapProps, 'center' | 'zoom'>) => {
   const [trashBins, setTrashBins] = useState<TrashBin[]>([]);
   const [loadingCount, setLoadingCount] = useState(0);
   const [mapMessage, setMapMessage] = useState<string | null>(null);
@@ -358,7 +358,7 @@ const TrashBinFetcher = () => {
       // Set initial render bounds
       setRenderBounds(map.getBounds());
     }
-  }, [map, handleMapChange]);
+  }, [map, handleMapChange, center, zoom]);
 
   const visibleBins = useMemo(() => {
     if (!renderBounds) return trashBins;
@@ -538,7 +538,7 @@ const TrashMap = ({ center, userLocation, zoom }: MapProps) => {
         minZoom={3}
       />
       <MapUpdater center={center} zoom={zoom} />
-      <TrashBinFetcher />
+      <TrashBinFetcher center={center} zoom={zoom} />
       {userLocation && (
         <Marker position={userLocation} icon={gpsIcon} />
       )}
