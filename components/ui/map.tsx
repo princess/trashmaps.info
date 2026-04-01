@@ -56,7 +56,8 @@ const TrashBinFetcher = () => {
   
   // Grid-based cache state
   const fetchedGridCells = useRef<Set<string>>(new Set());
-  const pendingGridCells = useRef<Set<string>>(new Set());
+  const activeGridCells = useRef<Set<string>>(new Set());
+  const cellQueue = useRef<string[]>([]);
   const activeRequests = useRef<number>(0);
 
   const map = useMap();
@@ -105,22 +106,22 @@ const TrashBinFetcher = () => {
     };
   };
 
-  const fetchBatch = async (cellsToFetch: string[]) => {
-    if (cellsToFetch.length === 0) return;
-    
+  const processQueue = useCallback(async () => {
+    if (activeRequests.current >= MAX_CONCURRENT_REQUESTS || cellQueue.current.length === 0) {
+      return;
+    }
+
+    const cellToFetch = cellQueue.current.shift();
+    if (!cellToFetch) return;
+
     const zoom = map.getZoom();
-    cellsToFetch.forEach(c => pendingGridCells.current.add(c));
+    activeGridCells.current.add(cellToFetch);
     setLoadingCount(prev => prev + 1);
     activeRequests.current++;
 
-    // Calculate bounding box for the entire batch
-    const allBounds = cellsToFetch.map(getCellBounds);
-    const s = Math.min(...allBounds.map(b => b.s));
-    const w = Math.min(...allBounds.map(b => b.w));
-    const n = Math.max(...allBounds.map(b => b.n));
-    const e = Math.max(...allBounds.map(b => b.e));
+    const cellBounds = getCellBounds(cellToFetch);
+    const { s, w, n, e } = cellBounds;
 
-    // Optimize query: use [timeout:60], [maxsize:...], and out qt center
     const isLowZoom = zoom < 14;
     const overpassQuery = isLowZoom ? `
       [out:json][timeout:60][maxsize:1000000];
@@ -143,8 +144,6 @@ const TrashBinFetcher = () => {
 
     let success = false;
     let lastError: any = null;
-
-    // Randomize endpoints to distribute load
     const shuffledEndpoints = [...API_ENDPOINTS].sort(() => Math.random() - 0.5);
 
     try {
@@ -177,10 +176,8 @@ const TrashBinFetcher = () => {
               return Array.from(binMap.values());
             });
 
-            cellsToFetch.forEach(c => {
-              fetchedGridCells.current.add(c);
-              pendingGridCells.current.delete(c);
-            });
+            fetchedGridCells.current.add(cellToFetch);
+            activeGridCells.current.delete(cellToFetch);
             success = true;
             break; 
           }
@@ -200,17 +197,18 @@ const TrashBinFetcher = () => {
       setMapMessage(null);
 
     } catch (err: any) {
-      console.error("Fetch batch error:", err);
-      cellsToFetch.forEach(c => pendingGridCells.current.delete(c));
-      // Only show error message if we have no bins at all to show
+      console.error("Fetch cell error:", err, "Cell:", cellToFetch);
+      activeGridCells.current.delete(cellToFetch);
       if (trashBins.length === 0) {
         setMapMessage(`Connection issues. Try zooming in or moving the map.`);
       }
     } finally {
       setLoadingCount(prev => Math.max(0, prev - 1));
       activeRequests.current--;
+      // Process next in queue
+      processQueue();
     }
-  };
+  }, [map, trashBins.length]); // Dependencies for useCallback
 
   const getIconForBin = (bin: TrashBin) => {
     const isRecycling = bin.tags.amenity === 'recycling' || 
@@ -298,7 +296,9 @@ const TrashBinFetcher = () => {
     const visibleCells = getGridCells(currentBounds);
     
     const newCells = visibleCells.filter(c => 
-      !fetchedGridCells.current.has(c) && !pendingGridCells.current.has(c)
+      !fetchedGridCells.current.has(c) && 
+      !activeGridCells.current.has(c) && 
+      !cellQueue.current.includes(c)
     );
 
     if (newCells.length === 0) {
@@ -306,14 +306,14 @@ const TrashBinFetcher = () => {
       return;
     }
 
-    // Process new cells one by one (batchSize = 1) to ensure each request is small and fast
-    const batchSize = 1; 
-    for (let i = 0; i < newCells.length; i += batchSize) {
-      if (activeRequests.current >= MAX_CONCURRENT_REQUESTS) break;
-      const batch = newCells.slice(i, i + batchSize);
-      fetchBatch(batch);
+    // Add new cells to queue
+    cellQueue.current.push(...newCells);
+    
+    // Start processing queue (up to MAX_CONCURRENT_REQUESTS)
+    for (let i = 0; i < MAX_CONCURRENT_REQUESTS; i++) {
+      processQueue();
     }
-  }, [map]);
+  }, [map, processQueue]);
 
   useMapEvents({
     moveend: handleMapChange,
