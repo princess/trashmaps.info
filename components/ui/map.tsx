@@ -76,7 +76,7 @@ const TrashBinFetcher = () => {
     'https://overpass.be/api/interpreter',
   ];
 
-  const getGridCells = (bounds: LatLngBounds) => {
+  const getGridCells = useCallback((bounds: LatLngBounds) => {
     const zoom = map.getZoom();
     const dynamicGridSize = zoom < 14 ? GRID_SIZE_LOW_ZOOM : GRID_SIZE_HIGH_ZOOM;
     
@@ -96,9 +96,9 @@ const TrashBinFetcher = () => {
       }
     }
     return cells;
-  };
+  }, [map]);
 
-  const getCellBounds = (cellKey: string) => {
+  const getCellBounds = useCallback((cellKey: string) => {
     const zoom = map.getZoom();
     const dynamicGridSize = zoom < 14 ? GRID_SIZE_LOW_ZOOM : GRID_SIZE_HIGH_ZOOM;
     const [latIdx, lonIdx] = cellKey.split(':').map(Number);
@@ -108,7 +108,7 @@ const TrashBinFetcher = () => {
       n: (latIdx + 1) * dynamicGridSize,
       e: (lonIdx + 1) * dynamicGridSize,
     };
-  };
+  }, [map]);
 
   const processQueue = useCallback(async () => {
     if (activeRequests.current >= MAX_CONCURRENT_REQUESTS || cellQueue.current.length === 0) {
@@ -138,7 +138,7 @@ const TrashBinFetcher = () => {
         node["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
         node["bin"="yes"](${s},${w},${n},${e});
       );
-      out 1500 qt center;
+      out center 1500 qt;
     ` : `
       [out:json][timeout:60][maxsize:2000000];
       (
@@ -148,7 +148,7 @@ const TrashBinFetcher = () => {
         way["bin"="yes"](${s},${w},${n},${e});
         relation["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
       );
-      out qt center;
+      out center qt;
     `;
 
     let success = false;
@@ -220,10 +220,10 @@ const TrashBinFetcher = () => {
     } finally {
       setLoadingCount(prev => Math.max(0, prev - 1));
       activeRequests.current--;
-      // Process next in queue
-      processQueue();
+      // Process next in queue with a small delay to let React breathe
+      setTimeout(() => processQueue(), 50);
     }
-  }, [map]); // Removed trashBins.length for stability
+  }, [map, getCellBounds]); // Added getCellBounds as it's used inside
 
   const getIconForBin = (bin: TrashBin) => {
     const isRecycling = bin.tags.amenity === 'recycling' || 
@@ -330,7 +330,7 @@ const TrashBinFetcher = () => {
     for (let i = 0; i < MAX_CONCURRENT_REQUESTS; i++) {
       processQueue();
     }
-  }, [map, processQueue]);
+  }, [map, processQueue, getGridCells]);
 
   useMapEvents({
     moveend: handleMapChange,
