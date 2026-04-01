@@ -138,7 +138,7 @@ const TrashBinFetcher = () => {
         node["amenity"~"waste_basket|recycling|waste_disposal"](${s},${w},${n},${e});
         node["bin"="yes"](${s},${w},${n},${e});
       );
-      out qt center 1500;
+      out 1500 qt center;
     ` : `
       [out:json][timeout:60][maxsize:2000000];
       (
@@ -210,16 +210,20 @@ const TrashBinFetcher = () => {
     } catch (err: any) {
       console.error("Fetch batch error:", err, "Cells:", cellsToFetch);
       cellsToFetch.forEach(c => activeGridCells.current.delete(c));
-      if (trashBins.length === 0) {
-        setMapMessage(`Connection issues. Try zooming in or moving the map.`);
-      }
+      // Use functional update to check if we have bins
+      setTrashBins(prev => {
+        if (prev.length === 0) {
+          setMapMessage(`Connection issues. Try zooming in or moving the map.`);
+        }
+        return prev;
+      });
     } finally {
       setLoadingCount(prev => Math.max(0, prev - 1));
       activeRequests.current--;
       // Process next in queue
       processQueue();
     }
-  }, [map, trashBins.length]); // Dependencies for useCallback
+  }, [map]); // Removed trashBins.length for stability
 
   const getIconForBin = (bin: TrashBin) => {
     const isRecycling = bin.tags.amenity === 'recycling' || 
@@ -304,6 +308,8 @@ const TrashBinFetcher = () => {
     }
 
     const currentBounds = map.getBounds();
+    if (!currentBounds || !currentBounds.getNorth) return; // Safety check
+
     const visibleCells = getGridCells(currentBounds);
     
     const newCells = visibleCells.filter(c => 
