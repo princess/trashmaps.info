@@ -72,13 +72,13 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
     setError(null);
 
     try {
-      let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=10&addressdetails=1`;
+      let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=15&addressdetails=1`;
       
       // Add spatial biasing if we have a current center
       if (currentCenter) {
         const [lat, lon] = currentCenter;
-        // Create a viewbox around the current center (roughly 1 degree)
-        const viewbox = `${lon - 0.5},${lat + 0.5},${lon + 0.5},${lat - 0.5}`;
+        // Narrower viewbox (roughly 10km) for stronger local biasing
+        const viewbox = `${lon - 0.1},${lat + 0.1},${lon + 0.1},${lat - 0.1}`;
         url += `&viewbox=${viewbox}&bounded=0`;
       }
 
@@ -90,8 +90,31 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
       
       if (!response.ok) throw new Error(`Search failed`);
       
-      const data: NominatimResult[] = await response.json();
-      setResults(data);
+      let data: NominatimResult[] = await response.json();
+
+      // Custom sorting to prioritize local results and businesses
+      if (currentCenter) {
+        const [cLat, cLon] = currentCenter;
+        data = data.sort((a, b) => {
+            const aIsLocal = Math.abs(parseFloat(a.lat) - cLat) < 0.1 && Math.abs(parseFloat(a.lon) - cLon) < 0.1;
+            const bIsLocal = Math.abs(parseFloat(b.lat) - cLat) < 0.1 && Math.abs(parseFloat(b.lon) - cLon) < 0.1;
+            
+            // Priority 1: Both are local, or both are not local -> sort by business/amenity type
+            if (aIsLocal === bIsLocal) {
+                const aIsBusiness = ['amenity', 'shop', 'tourism', 'leisure'].includes(a.class || '');
+                const bIsBusiness = ['amenity', 'shop', 'tourism', 'leisure'].includes(b.class || '');
+                
+                if (aIsBusiness && !bIsBusiness) return -1;
+                if (!aIsBusiness && bIsBusiness) return 1;
+                return 0;
+            }
+            
+            // Priority 2: One is local, one is not
+            return aIsLocal ? -1 : 1;
+        });
+      }
+
+      setResults(data.slice(0, 10)); // Keep top 10 after sorting
       setIsOpen(true);
       setSelectedIndex(-1);
     } catch (err) {
