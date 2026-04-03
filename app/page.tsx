@@ -125,8 +125,8 @@ export default function TrashMapsHome() {
             <p className="text-sm sm:text-base text-gray-600">
              Use our map to quickly locate nearby public trash and recycling bins.
             </p>
-            <div className="max-h-[200px] overflow-hidden rounded-md">
-              <AdComponent />
+            <div className="min-h-[250px] overflow-hidden rounded-md flex items-center justify-center bg-gray-50">
+              <AdComponent adSlot="4122122184" />
             </div>
             <div className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-gray-500">
               <p>🗺️ Global coverage in 150+ countries</p>
@@ -184,13 +184,19 @@ export default function TrashMapsHome() {
 
       {/* Bottom Banner */}
       <footer className="absolute bottom-0 left-0 right-0 z-10 bg-gray-900/90 backdrop-blur-sm text-white py-2 px-4">
-        <div className="container mx-auto text-center">
-          <div className="flex items-center justify-center gap-2">
+        <div className="container mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <div className="bg-green-600 p-1 rounded-md">
               <Recycle className="h-4 w-4 text-white" />
             </div>
             <span className="font-bold text-sm">Trash Maps</span>
           </div>
+          <a 
+            href="/privacy" 
+            className="text-xs text-gray-400 hover:text-white transition-colors"
+          >
+            Privacy Policy
+          </a>
         </div>
       </footer>
     </div>
