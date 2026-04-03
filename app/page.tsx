@@ -109,29 +109,31 @@ export default function TrashMapsHome() {
       <main className="relative h-full w-full">
         {/* Welcome Modal */}
       <Dialog open={showWelcomeModal} onOpenChange={setShowWelcomeModal}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md p-4 sm:p-6">
           <DialogHeader>
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <div className="bg-green-600 p-3 rounded-lg">
-                <Recycle className="h-8 w-8 text-white" />
+            <div className="flex items-center justify-center gap-2 mb-2 sm:mb-4">
+              <div className="bg-green-600 p-2 sm:p-3 rounded-lg">
+                <Recycle className="h-6 w-6 sm:h-8 sm:h-8 text-white" />
               </div>
-              <DialogTitle className="text-3xl font-bold text-green-800">Trash Maps</DialogTitle>
+              <DialogTitle className="text-2xl sm:text-3xl font-bold text-green-800">Trash Maps</DialogTitle>
             </div>
           </DialogHeader>
-          <div className="text-center space-y-4">
-            <h3 className="text-xl font-semibold text-gray-900">
+          <div className="text-center space-y-3 sm:space-y-4">
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-900">
               Welcome to Trash Maps!
             </h3>
-            <p className="text-gray-600">
+            <p className="text-sm sm:text-base text-gray-600">
              Use our map to quickly locate nearby public trash and recycling bins.
             </p>
-            <AdComponent />
-            <div className="space-y-2 text-sm text-gray-500">
+            <div className="max-h-[200px] overflow-hidden rounded-md">
+              <AdComponent />
+            </div>
+            <div className="space-y-1 sm:space-y-2 text-xs sm:text-sm text-gray-500">
               <p>🗺️ Global coverage in 150+ countries</p>
             </div>
             <Button 
               onClick={() => setShowWelcomeModal(false)}
-              className="w-full bg-green-600 hover:bg-green-700"
+              className="w-full bg-green-600 hover:bg-green-700 py-6 text-lg sm:py-2 sm:text-base"
             >
               Start Exploring
             </Button>
