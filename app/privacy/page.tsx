@@ -57,13 +57,6 @@ export default function PrivacyPolicy() {
               Like most website operators, we collect information that your browser sends whenever you visit our site ("Log Data"). This may include information such as your device's Internet Protocol ("IP") address, browser type, and browser version.
             </p>
           </section>
-
-          <section>
-            <h2 className="text-2xl font-bold text-gray-800 mb-3">5. Contact Us</h2>
-            <p>
-              If you have any questions about this Privacy Policy, please contact us at privacy@trashmaps.info.
-            </p>
-          </section>
         </div>
 
         <footer className="mt-12 pt-8 border-t border-gray-100 text-center text-gray-400 text-sm">
