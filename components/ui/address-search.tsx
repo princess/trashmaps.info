@@ -197,6 +197,7 @@ const AddressSearch = ({ onSelectLocation, currentCenter }: AddressSearchProps) 
         <Input
           type="text"
           placeholder="Search for a place..."
+          aria-label="Search for a location"
           value={query}
           onChange={handleChange}
           onKeyDown={handleKeyDown}

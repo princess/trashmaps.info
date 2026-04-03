@@ -20,14 +20,16 @@ const AdComponent = ({ adSlot }: AdComponentProps) => {
   }, []);
 
   return (
-    <ins
-      className="adsbygoogle"
-      style={{ display: 'block' }}
-       data-ad-client="ca-pub-9410578522426844"
-       data-ad-slot={adSlot || "4787623283"}
-       data-ad-format="auto"
-       data-full-width-responsive="true"
-    ></ins>
+    <div className="ad-container overflow-hidden min-h-[250px] flex items-center justify-center bg-gray-50/50 rounded-lg">
+      <ins
+        className="adsbygoogle"
+        style={{ display: 'block', minWidth: '250px', minHeight: '250px' }}
+         data-ad-client="ca-pub-9410578522426844"
+         data-ad-slot={adSlot || "4787623283"}
+         data-ad-format="auto"
+         data-full-width-responsive="true"
+      ></ins>
+    </div>
   );
 };
 

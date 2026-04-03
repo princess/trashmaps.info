@@ -1,10 +1,39 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Recycle, ArrowLeft } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 
+export const metadata: Metadata = {
+  title: 'Privacy Policy | Trash Maps',
+  description: 'Our privacy policy explains how we collect, use, and safeguard your information on Trash Maps.',
+}
+
 export default function PrivacyPolicy() {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://trashmaps.info"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Privacy Policy",
+                "item": "https://trashmaps.info/privacy"
+              }
+            ]
+          })
+        }}
+      />
       <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-sm p-8 sm:p-12">
         <div className="flex items-center justify-between mb-8">
           <Link href="/" className="flex items-center gap-2">
